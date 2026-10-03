@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One dataset, three stores: HDFS, MongoDB and HBase, one command at a time</title>
+<meta name="description" content="Run every command of the Storing and Retrieving Data from HDFS and NoSQL Databases lab in the browser and watch what each one does to HDFS blocks, MongoDB indexes and HBase regions.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root{
+  --paper:#F2F4F6; --surface:#FFFFFF; --ink:#16202B; --muted:#58646F; --rule:#D3D9DF;
+  --signal:#0B6E69; --signal-soft:#DCEFEC; --danger:#B42318; --danger-soft:#FBE4E1; --ok:#2E7D32; --ok-soft:#E5F2E6;
+  --hdfs:#1D4ED8; --hdfs-soft:#E3EAFC; --mongo:#2F7D32; --mongo-soft:#E4F3E5; --hbase:#B45309; --hbase-soft:#FDF0DC; --spark:#9A3412;
+  --salt:#C2410C; --hostc:#1D4ED8; --rts:#64748B;
+  --term-bg:#101820; --term-fg:#D6DEE6; --term-dim:#8193A3; --term-prompt:#7EE2A8; --term-path:#8CC4FF;
+  --bs-body-bg:var(--paper); --bs-body-color:var(--ink); --bs-border-color:var(--rule);
+  --bs-body-font-family:'Ubuntu',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --bs-font-monospace:'Ubuntu Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+html{scroll-behavior:smooth;scroll-padding-top:70px}
+body{font-size:1rem;line-height:1.55}
+h1,h2,h3{font-weight:700;letter-spacing:-.01em;line-height:1.1}
+h1{font-size:clamp(2rem,4.6vw,3.4rem);max-width:20ch}
+h2{font-size:clamp(1.45rem,2.6vw,2rem)}
+h3{font-size:1.08rem;font-weight:700}
+p{max-width:70ch}
+code{color:var(--ink);background:#E4E9EE;padding:.05em .3em;border-radius:3px;font-size:.98em}
+.muted{color:var(--muted)} .tnum{font-variant-numeric:tabular-nums}
+.btn{font-weight:600;border-radius:6px}
+.btn-ink{background:var(--ink);color:#fff;border:1px solid var(--ink)}
+.btn-ink:hover,.btn-ink:focus{background:#2A3744;color:#fff}
+.btn-line{background:var(--surface);color:var(--ink);border:1px solid var(--rule)}
+.btn-line:hover{border-color:var(--ink);color:var(--ink)}
+.btn:focus-visible{outline:3px solid var(--signal);outline-offset:2px;box-shadow:none}
+.topnav{background:rgba(242,244,246,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--rule)}
+.brand{font-weight:700;color:var(--ink);text-decoration:none}
+.topnav .nav-link{color:var(--muted);font-weight:600;font-size:.95rem;padding:.35rem .6rem}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:1rem 1.1rem}
+.panel-title{font-weight:700;font-size:.95rem;margin-bottom:.5rem}
+.hero{padding:2.75rem 0 1.5rem}
+.lead-text{font-size:1.15rem;color:var(--muted);max-width:64ch}
+
+/* the three shapes, the page's signature */
+.shapes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin-top:1.4rem}
+.shape{background:#fff;border:1.5px solid var(--rule);border-radius:10px;padding:.9rem 1rem;border-top-width:5px}
+.shape.h{border-top-color:var(--hdfs)} .shape.m{border-top-color:var(--mongo)} .shape.b{border-top-color:var(--hbase)}
+.shape h3{margin-bottom:.15rem}
+.shape .unit{font-size:.85rem;color:var(--muted);margin-bottom:.55rem}
+.shape dl{display:grid;grid-template-columns:auto 1fr;gap:.15rem .6rem;font-size:.86rem;margin:0}
+.shape dt{font-weight:700}
+.shape dd{margin:0}
+.pic{height:58px;margin-bottom:.5rem;display:flex;gap:4px;align-items:stretch}
+.pic.h i{flex:1;background:var(--hdfs-soft);border:1.5px solid var(--hdfs);border-radius:3px}
+.pic.h i:last-child{flex:.55}
+.pic.m{flex-wrap:wrap;gap:3px;align-content:flex-start}
+.pic.m i{width:34px;height:26px;border:1.5px solid var(--mongo);background:var(--mongo-soft);border-radius:5px}
+.pic.m i:nth-child(2n){width:46px}
+.pic.b{flex-direction:column;gap:2px}
+.pic.b i{height:10px;border-radius:2px;background:linear-gradient(90deg,var(--salt) 0 14%,var(--hostc) 14% 46%,#CBD5E1 46% 100%)}
+.access{margin-top:1rem;border-left:4px solid var(--ink);padding:.5rem .9rem;background:#fff;font-size:1.02rem;max-width:72ch}
+
+/* rail, commands, terminal (shared simulator pattern) */
+.rail{display:flex;gap:.4rem;overflow-x:auto;padding:.25rem 0 .6rem;scrollbar-width:thin}
+.rail button{flex:0 0 auto;border:1.5px solid var(--rule);background:#fff;border-radius:8px;padding:.35rem .6rem;font-weight:650;font-size:.85rem;color:var(--muted);text-align:left;line-height:1.2}
+.rail button b{display:block;font-size:1rem;color:var(--ink);}
+.rail button.cur{border-color:var(--ink);box-shadow:inset 0 -3px 0 var(--ink);color:var(--ink)}
+.rail button.done b::after{content:" ✓";color:var(--ok)}
+.step-head h2{margin-bottom:.25rem;font-size:clamp(1.25rem,2vw,1.6rem)}
+.cmd-list{max-height:min(52vh,560px);overflow:auto;padding-right:4px;scrollbar-width:thin}
+.cmd{border:1.5px solid var(--rule);border-radius:9px;background:#fff;margin-bottom:.6rem;overflow:hidden}
+.cmd.next{border-color:var(--ink)} .cmd.done{border-color:#B9DCC0}
+.cmd-top{display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border-bottom:1px solid var(--rule);background:#F7F9FA}
+.term-badge{font-size:.72rem;font-weight:700;border-radius:4px;padding:1px 6px;background:var(--ink);color:#fff;white-space:nowrap}
+.term-badge.T2{background:var(--mongo)} .term-badge.T3{background:var(--spark)}
+.extra{font-size:.68rem;font-weight:700;color:var(--hbase);border:1px solid var(--hbase);border-radius:4px;padding:0 5px;white-space:nowrap}
+.cmd-label{font-size:.82rem;font-weight:650;color:var(--muted);flex:1;min-width:0}
+.cmd pre{margin:0;padding:.55rem .7rem;font-size:.9rem;line-height:1.45;background:#FBFCFD;max-height:240px;overflow:auto;white-space:pre}
+.cmd .run{min-width:92px} .cmd .status{font-size:.78rem;font-weight:700;white-space:nowrap}
+.cmd.done .status{color:var(--ok)}
+.cmd-explain{padding:.6rem .75rem;border-top:1px dashed var(--rule);font-size:.9rem;background:#fff}
+.cmd-explain p{margin:.15rem 0 .35rem}
+.cmd-explain .see{color:var(--signal);font-weight:600}
+.cmd-explain .vm{font-size:.8rem;color:var(--muted)}
+.cmd-explain .fix{border-left:3px solid var(--danger);padding:.3rem .6rem;background:var(--danger-soft);border-radius:0 6px 6px 0;font-size:.86rem}
+.step-takeaway{border:2px solid var(--ink);border-radius:10px;padding:.9rem 1.1rem;background:#fff;margin-top:.75rem}
+.step-takeaway ul{margin:.25rem 0 0;padding-left:1.1rem} .step-takeaway li{margin:.2rem 0}
+.ff-box{border:1.5px dashed var(--rule);border-radius:9px;padding:.75rem .9rem;margin-bottom:.75rem;background:#fff}
+.term-wrap{border-radius:10px;overflow:hidden;border:1px solid #22303C;background:var(--term-bg)}
+.term-tabs{display:flex;gap:2px;background:#1B2631;padding:4px 4px 0}
+.term-tabs button{border:0;background:#24313D;color:#AFC0CE;font-size:.78rem;font-weight:650;padding:.35rem .7rem;border-radius:6px 6px 0 0;display:flex;align-items:center;gap:.35rem}
+.term-tabs button.on{background:var(--term-bg);color:#fff}
+.term-tabs .dot{width:7px;height:7px;border-radius:50%;background:#5C6B78}
+.term-tabs .dot.busy{background:#F2C14E} .term-tabs .dot.py{background:#F28C38} .term-tabs .dot.mongo{background:#6CCB72}
+.term-body{height:300px;overflow:auto;padding:.6rem .75rem;margin:0;color:var(--term-fg);font-size:.86rem;line-height:1.45;white-space:pre;font-family:'Ubuntu Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.term-body .pr{color:var(--term-prompt);font-weight:700} .term-body .pa{color:var(--term-path);font-weight:700}
+.term-body .dim{color:var(--term-dim)} .term-body .err{color:#FF9B8F} .term-body .ok{color:#8EE6A3} .term-body .warn{color:#F2C14E} .term-body .hi{color:#FFD479;font-weight:700}
+
+/* system view */
+.sys{position:sticky;top:64px;max-height:calc(100vh - 76px);overflow:auto;padding-right:2px}
+.statusbar{display:flex;flex-wrap:wrap;gap:.3rem .5rem;align-items:center;background:var(--ink);color:#fff;border-radius:9px;padding:.45rem .7rem;margin-bottom:.6rem;font-size:.78rem}
+.statusbar .svc{border:1px solid #3A4A58;border-radius:5px;padding:1px 7px;color:#9FB0BE}
+.statusbar .svc.on{background:#fff;color:var(--ink);border-color:#fff;font-weight:700}
+.statusbar .svc.on.h{box-shadow:inset 0 -3px 0 var(--hdfs)} .statusbar .svc.on.m{box-shadow:inset 0 -3px 0 var(--mongo)} .statusbar .svc.on.b{box-shadow:inset 0 -3px 0 var(--hbase)} .statusbar .svc.on.s{box-shadow:inset 0 -3px 0 var(--spark)}
+.zone{border:1.5px solid var(--rule);background:#fff;border-radius:10px;padding:.65rem .75rem;margin-bottom:.6rem;transition:box-shadow .25s,border-color .25s}
+.zone.focus{border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-soft)}
+.zone-h{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;margin-bottom:.4rem}
+.zone-h b{font-size:.95rem} .zone-h span{font-size:.75rem;color:var(--muted);text-align:right}
+#zHdfs{border-left:5px solid var(--hdfs)} #zMongo{border-left:5px solid var(--mongo)} #zHbase{border-left:5px solid var(--hbase)} #zSpark{border-left:5px solid var(--spark)}
+.machine-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:.7rem}
+.mini-h{font-size:.78rem;font-weight:700;margin:.1rem 0 .25rem}
+.fs{font-size:.74rem;line-height:1.5;font-family:'Ubuntu Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;max-height:170px;overflow:auto;background:#F7F9FA;border:1px solid var(--rule);border-radius:6px;padding:.35rem .5rem}
+.fs .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fs .d{font-weight:700} .fs .f{color:#3B4A57} .fs .sz{color:var(--muted);font-family:'Ubuntu',sans-serif;font-size:.68rem;margin-left:4px}
+.fs .new{background:#FFF4C2;border-radius:3px}
+.fs .cwd{font-family:'Ubuntu',sans-serif;font-size:.64rem;font-weight:700;border-radius:3px;padding:0 4px;margin-left:4px;color:#fff;background:var(--ink)}
+.fs .cwd.T2{background:var(--mongo)} .fs .cwd.T3{background:var(--spark)}
+.procs{display:flex;flex-direction:column;gap:.25rem}
+.proc{border:1.5px solid var(--rule);border-radius:6px;padding:.2rem .45rem;font-size:.76rem;display:grid;grid-template-columns:1fr auto;gap:0 .4rem;line-height:1.3;background:#fff}
+.proc b{font-size:.78rem} .proc small{color:var(--muted);font-size:.68rem;grid-column:1 / -1}
+.proc .st{font-size:.66rem;font-weight:700;color:var(--ok)}
+.proc.jvm{border-left:4px solid #E76F00} .proc.py{border-left:4px solid #3776AB} .proc.dk{border-left:4px solid #1D63ED}
+.legend{display:flex;flex-wrap:wrap;gap:.2rem .8rem;font-size:.68rem;color:var(--muted);margin-top:.3rem}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.none{color:var(--muted);font-size:.8rem;font-style:italic}
+
+/* HDFS */
+.nn{border:1.5px solid var(--hdfs);border-radius:7px;padding:.35rem .5rem;font-size:.74rem;margin-bottom:.45rem}
+.nn .row1{display:grid;grid-template-columns:1fr auto;gap:.4rem;padding:.12rem 0;border-bottom:1px dashed var(--rule)}
+.nn .row1:last-child{border-bottom:0}
+.nn .blks{grid-column:1 / -1;color:var(--muted);font-size:.68rem;font-family:'Ubuntu Mono',ui-monospace,Menlo,Consolas,monospace}
+.dn{border:1.5px solid var(--rule);border-radius:7px;padding:.35rem .5rem}
+.blockrow{display:flex;gap:3px;margin:.25rem 0}
+.blk{border:1.5px solid var(--hdfs);background:var(--hdfs-soft);border-radius:4px;font-size:.64rem;padding:2px 4px;line-height:1.25;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.blk b{display:block;font-size:.66rem}
+.blk.copy{border-color:#7C3AED;background:#EFE7FD}
+.blk.new{animation:pop .5s ease-out}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+.bar{height:9px;background:#E7EBEF;border-radius:5px;overflow:hidden;margin-top:.2rem}
+.bar i{display:block;height:100%;background:var(--hdfs)}
+.flow{font-size:.72rem;color:#5B21B6;font-weight:650;margin-top:.25rem}
+
+/* Mongo */
+.mrow{display:flex;flex-wrap:wrap;gap:.3rem .6rem;align-items:center;font-size:.78rem}
+.ichip{font-size:.7rem;font-weight:700;border:1.5px solid var(--mongo);color:var(--mongo);border-radius:4px;padding:0 6px;background:#fff}
+.ichip.new{background:#FFF4C2}
+.plan{display:grid;grid-template-columns:92px 1fr;gap:.25rem .5rem;align-items:center;font-size:.74rem;margin-top:.45rem}
+.plan .lbl{font-weight:700}
+.plan .lbl small{display:block;font-weight:500;color:var(--muted)}
+.ptrack{position:relative;height:18px;background:#EEF1F3;border-radius:4px;overflow:hidden}
+.ptrack i{position:absolute;left:0;top:0;bottom:0;background:var(--mongo);opacity:.85}
+.ptrack i.ret{background:var(--ink);opacity:1}
+.ptrack span{position:absolute;right:6px;top:1px;font-size:.66rem;font-weight:700;font-variant-numeric:tabular-nums}
+.headline{margin-top:.5rem;border:1.5px solid var(--mongo);background:var(--mongo-soft);border-radius:7px;padding:.4rem .6rem;font-size:.8rem}
+.headline b.big{font-size:1.15rem;}
+.ixstrip{display:flex;height:16px;border-radius:3px;overflow:hidden;margin-top:.3rem;border:1px solid var(--rule)}
+.ixstrip i{flex:1;background:#E9F3EA;border-right:1px solid #fff}
+.ixstrip i.hit{background:var(--mongo)}
+
+/* HBase */
+.anat{font-family:'Ubuntu Mono',ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;font-weight:700;margin:.15rem 0 .1rem}
+.k-s{color:var(--salt)} .k-h{color:var(--hostc)} .k-t{color:var(--rts)}
+.hrows{font-family:'Ubuntu Mono',ui-monospace,Menlo,Consolas,monospace;font-size:.7rem;border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.hrows .r{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:.4rem;padding:2px 6px;border-bottom:1px dashed var(--rule)}
+.hrows .r:last-child{border-bottom:0}
+.hrows .r.hit{background:var(--hbase-soft)}
+.hrows .r .c{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.regions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-top:.3rem}
+.region{border:1.5px solid var(--hbase);border-radius:6px;padding:.25rem .3rem;font-size:.66rem;text-align:center;background:#fff;position:relative;min-height:84px;display:flex;flex-direction:column}
+.region b{font-size:.7rem}
+.region .rng{color:var(--muted);font-family:'Ubuntu Mono',ui-monospace,Menlo,Consolas,monospace;font-size:.62rem}
+.region .load{margin-top:auto;height:34px;display:flex;align-items:flex-end;justify-content:center}
+.region .load i{width:60%;background:var(--hbase);border-radius:2px 2px 0 0;display:block}
+.region .n{font-weight:700;font-size:.8rem;font-variant-numeric:tabular-nums}
+.region.hot{background:var(--danger-soft);border-color:var(--danger)}
+.region.hot .load i{background:var(--danger)}
+
+/* Spark + comparison */
+.push{display:grid;grid-template-columns:1fr auto 1fr;gap:.4rem;align-items:center;font-size:.74rem;margin-top:.3rem}
+.push .bx{border:1.5px solid var(--rule);border-radius:7px;padding:.35rem .45rem;background:#fff}
+.push .bx.s{border-color:var(--spark)} .push .bx.m{border-color:var(--mongo)}
+.push .ar{font-weight:700;color:var(--muted);text-align:center;font-size:.7rem}
+table.cmpt{width:100%;font-size:.76rem;border-collapse:collapse}
+table.cmpt th{font-weight:700;border-bottom:2px solid var(--ink);padding:.2rem .3rem;text-align:left}
+table.cmpt td{padding:.3rem .3rem;border-bottom:1px dashed var(--rule);vertical-align:top}
+.tbar{height:12px;border-radius:3px;margin-top:3px}
+.tbar.h{background:var(--hdfs)} .tbar.m{background:var(--mongo)} .tbar.b{background:var(--hbase)} .tbar.x{background:#9AA5AF}
+
+.concl{padding:3rem 0 2rem;border-top:1px solid var(--rule);margin-top:2.5rem}
+.checklist{list-style:none;padding:0;margin:0}
+.checklist li{padding:.45rem 0 .45rem 2rem;position:relative;border-bottom:1px dashed var(--rule)}
+.checklist li::before{content:"";position:absolute;left:0;top:.55rem;width:20px;height:20px;border:2px solid var(--rule);border-radius:5px;background:#fff}
+.checklist li.got::before{border-color:var(--ok);background:var(--ok)}
+.checklist li.got::after{content:"✓";position:absolute;left:5px;top:.42rem;color:#fff;font-weight:700;font-size:.85rem}
+.checklist small{display:block;color:var(--muted)}
+.lessons{counter-reset:l;list-style:none;padding:0;margin:0}
+.lessons li{counter-increment:l;padding:.5rem 0 .5rem 2.3rem;position:relative;border-bottom:1px dashed var(--rule)}
+.lessons li::before{content:counter(l);position:absolute;left:0;top:.45rem;width:1.7rem;height:1.7rem;border-radius:50%;background:var(--ink);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.85rem}
+footer{border-top:1px solid var(--rule);padding:1.5rem 0 2.5rem;color:var(--muted);font-size:.88rem}
+#flight{position:fixed;inset:0;pointer-events:none;z-index:2000}
+.dot{position:absolute;left:0;top:0;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:2px}
+@media (max-width: 991.98px){ .sys{position:static;max-height:none} .machine-grid{grid-template-columns:1fr} .shapes{grid-template-columns:1fr} }
+@media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} .blk.new{animation:none} }
+</style>
+</head>
+<body>
+<div id="flight" aria-hidden="true"></div>
+<nav class="topnav sticky-top">
+  <div class="container-xxl d-flex flex-wrap justify-content-between align-items-center py-2 gap-2">
+    <a class="brand" href="#top">One dataset, three stores</a>
+    <div class="nav">
+      <a class="nav-link" href="#shapes">The three shapes</a>
+      <a class="nav-link" href="#sim">Simulator</a>
+      <a class="nav-link" href="#conclusion">What the lab teaches</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+<header class="hero" id="shapes">
+  <div class="container-xxl">
+    <h1>Same two million events, stored three ways.</h1>
+    <p class="lead-text mt-3">Run every command of <em>Storing and Retrieving Data from HDFS and NoSQL Databases</em> here. The terminal answers as your VM would, and the right side shows what each command did: HDFS blocks on the DataNode, MongoDB scanning or using an index, and HBase rows sorted by their key.</p>
+    <div class="shapes">
+      <div class="shape h">
+        <div class="pic h" aria-hidden="true"><i></i><i></i><i></i></div>
+        <h3>HDFS</h3><div class="unit">Unit: a file, cut into 128 MB blocks</div>
+        <dl><dt>Good at</dt><dd>Full scans, cheap bulk storage</dd><dt>Bad at</dt><dd>Small files, random access, updates</dd><dt>Schema</dt><dd>None; the reader imposes it</dd></dl>
+      </div>
+      <div class="shape m">
+        <div class="pic m" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <h3>MongoDB</h3><div class="unit">Unit: a document</div>
+        <dl><dt>Good at</dt><dd>Flexible nested records, rich queries</dd><dt>Bad at</dt><dd>Very large scans, huge write throughput</dd><dt>Schema</dt><dd>Per document</dd></dl>
+      </div>
+      <div class="shape b">
+        <div class="pic b" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <h3>HBase</h3><div class="unit">Unit: a cell (row, family, qualifier, version)</div>
+        <dl><dt>Good at</dt><dd>Random read or write of one row at huge scale</dd><dt>Bad at</dt><dd>Anything but a row-key lookup or range</dd><dt>Schema</dt><dd>Families fixed, qualifiers free</dd></dl>
+      </div>
+    </div>
+    <p class="access">The question that decides between them is never "which is best" but <strong>"what is the access pattern?"</strong></p>
+  </div>
+</header>
+
+<section id="sim" class="pt-2">
+  <div class="container-xxl">
+    <h2 class="mb-1">The simulator</h2>
+    <p class="muted mb-2">Run commands in order. Three terminals are used: <strong>T1</strong> for the Linux shell, <strong>T2</strong> for MongoDB's shell and then PySpark, <strong>T3</strong> for a second PySpark in step 11. Each explanation also says roughly how long the command takes on the VM.</p>
+    <div class="rail" id="rail" role="tablist" aria-label="Lab steps"></div>
+    <div class="row g-3 mt-1">
+      <div class="col-lg-6">
+        <div id="stepPane"></div>
+        <div class="term-wrap mt-2">
+          <div class="term-tabs" id="termTabs" role="tablist" aria-label="Terminals"></div>
+          <pre class="term-body" id="termBody" aria-live="polite" tabindex="0"></pre>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="sys" id="sys">
+          <div class="statusbar" id="statusbar"></div>
+          <div class="zone" id="zMachine"><div class="zone-h"><b>The machine (ubuntuOS)</b><span>local files, processes and containers</span></div><div id="machine"></div></div>
+          <div class="zone" id="zHdfs"><div class="zone-h"><b>HDFS</b><span id="hdfsState"></span></div><div id="hdfs"></div></div>
+          <div class="zone" id="zMongo"><div class="zone-h"><b>MongoDB</b><span id="mongoState"></span></div><div id="mongo"></div></div>
+          <div class="zone" id="zHbase"><div class="zone-h"><b>HBase</b><span id="hbaseState"></span></div><div id="hbase"></div></div>
+          <div class="zone" id="zSpark"><div class="zone-h"><b>Spark and the comparison</b><span id="sparkState"></span></div><div id="spark"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="concl" id="conclusion">
+  <div class="container-xxl">
+    <h2 class="mb-3">What this lab teaches</h2>
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <ol class="lessons">
+          <li><strong>Storage design decides query cost.</strong> The same question took tens of seconds on HDFS, milliseconds on MongoDB with an index, and milliseconds on HBase. Each number follows from how the store lays out data: HDFS scans, MongoDB walks an index, HBase jumps to a key range.</li>
+          <li><strong>HDFS is files cut into blocks.</strong> The NameNode keeps only metadata (which blocks make up which file, and where they live); the DataNode keeps the blocks as ordinary files on its disk. <code>fsck</code> shows the mapping. Renames are metadata-only and instant; copies move every byte.</li>
+          <li><strong>HDFS is write-once.</strong> No random writes, no in-place updates. It is built for loading big files and scanning all of them.</li>
+          <li><strong>Read <code>explain()</code> before trusting a query.</strong> COLLSCAN with 2,000,000 documents examined to return 471 means no usable index. A compound index on the filter fields turned that into an index scan that examined only the 471 matches. Field order matters: <code>{host, event_date}</code> cannot serve a filter on <code>event_date</code> alone.</li>
+          <li><strong>In HBase, the row key is the design.</strong> Rows are sorted by key and split into regions by key range. A sequential key sends every write to the last region (the hotspot). A salt prefix spreads writes, the host keeps one host's history together, and a reversed timestamp puts the newest row first.</li>
+          <li><strong>Spark reads all three.</strong> With the Mongo connector, Spark pushes filters down so MongoDB does the filtering, and only matching documents travel.</li>
+          <li><strong>Choose by access pattern.</strong> Scan everything cheaply: HDFS. Flexible documents with ad-hoc queries: MongoDB. One key, or a key range, at huge scale and write rate: HBase.</li>
+        </ol>
+        <div class="panel mt-3">
+          <div class="panel-title">For your row key paragraph</div>
+          <p class="mb-0">Answer three questions in order. What spreads the writes across regions? (the salt, so no single region server takes every insert). What keeps the rows you read together contiguous? (the host after the salt, so one host's history is a single range scan). What order do readers want inside that range? (newest first, so the timestamp is reversed). Then name the cost: to read one host you must know its salt, which is why the salt is computed from the host rather than chosen at random.</p>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="panel">
+          <div class="panel-title">Your deliverable, collected as you run the simulator</div>
+          <ul class="checklist" id="checklist">
+            <li data-k="fsck"><code>hdfs fsck</code> output for the uploaded file<small>step 2: block count and locations</small></li>
+            <li data-k="before">explain() before the index<small>step 5: COLLSCAN, totalDocsExamined</small></li>
+            <li data-k="after">explain() after the index<small>step 6: IXSCAN, totalDocsExamined, and the ratio</small></li>
+            <li data-k="rowkey">HBase row key design<small>steps 9 and 10: salted key, range scan, hotspot</small></li>
+            <li data-k="timings">Timing table for the same question<small>step 11: HDFS, MongoDB, HBase</small></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+<footer><div class="container-xxl">Big Data Analytics, Lab III: Storing and Retrieving Data from HDFS and NoSQL Databases. Outputs are representative of a real run with this dataset: block IDs, ObjectIds, PIDs, timings and version details will differ on your VM.</div></footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=(s,r=document)=>r.querySelector(s);
+const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const hasGsap=typeof window.gsap!=='undefined';
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const HOME='/home/hadoop';
+const DATA={"head": "{\"event_id\": 0, \"event_time\": \"2026-08-08 20:38:46\", \"event_date\": \"2026-08-08\", \"host\": \"host038\", \"action\": \"port_scan\", \"bytes\": 341377, \"src_ip\": \"10.0.24.19\"}\n{\"event_id\": 1, \"event_time\": \"2026-08-20 22:25:37\", \"event_date\": \"2026-08-20\", \"host\": \"host137\", \"action\": \"login_ok\", \"bytes\": 191826, \"src_ip\": \"10.0.29.233\"}\n{\"event_id\": 2, \"event_time\": \"2026-08-13 07:36:09\", \"event_date\": \"2026-08-13\", \"host\": \"host054\", \"action\": \"login_ok\", \"bytes\": 45161, \"src_ip\": \"10.0.222.108\"}\n{\"event_id\": 3, \"event_time\": \"2026-08-02 16:41:37\", \"event_date\": \"2026-08-02\", \"host\": \"host061\", \"action\": \"login_ok\", \"bytes\": 289007, \"src_ip\": \"10.0.217.16\"}\n{\"event_id\": 4, \"event_time\": \"2026-08-14 17:24:02\", \"event_date\": \"2026-08-14\", \"host\": \"host031\", \"action\": \"login_failed\", \"bytes\": 330729, \"src_ip\": \"10.0.31.148\"}\n{\"event_id\": 5, \"event_time\": \"2026-08-15 05:06:09\", \"event_date\": \"2026-08-15\", \"host\": \"host101\", \"action\": \"login_ok\", \"bytes\": 116010, \"src_ip\": \"10.0.23.143\"}\n{\"event_id\": 6, \"event_time\": \"2026-", "tail": ".172.100\"}\n{\"event_id\": 1999994, \"event_time\": \"2026-08-03 15:36:13\", \"event_date\": \"2026-08-03\", \"host\": \"host007\", \"action\": \"logout\", \"bytes\": 269467, \"src_ip\": \"10.0.91.9\"}\n{\"event_id\": 1999995, \"event_time\": \"2026-08-07 13:59:34\", \"event_date\": \"2026-08-07\", \"host\": \"host015\", \"action\": \"logout\", \"bytes\": 218661, \"src_ip\": \"10.0.118.74\"}\n{\"event_id\": 1999996, \"event_time\": \"2026-08-17 09:55:18\", \"event_date\": \"2026-08-17\", \"host\": \"host194\", \"action\": \"logout\", \"bytes\": 438856, \"src_ip\": \"10.0.187.67\"}\n{\"event_id\": 1999997, \"event_time\": \"2026-08-20 09:07:50\", \"event_date\": \"2026-08-20\", \"host\": \"host110\", \"action\": \"file_read\", \"bytes\": 479108, \"src_ip\": \"10.0.27.138\"}\n{\"event_id\": 1999998, \"event_time\": \"2026-08-18 04:04:37\", \"event_date\": \"2026-08-18\", \"host\": \"host162\", \"action\": \"file_read\", \"bytes\": 329394, \"src_ip\": \"10.0.88.187\"}\n{\"event_id\": 1999999, \"event_time\": \"2026-08-07 14:47:02\", \"event_date\": \"2026-08-07\", \"host\": \"host061\", \"action\": \"logout\", \"bytes\": 470853, \"src_ip\": \"10.0.218.173\"}\n"};
+const FILE_BYTES=340336945, BLOCK=134217728;
+const N=2000000, HIT=471;
+const A42={file_read:2020,logout:2112,login_failed:2079,login_ok:2064,port_scan:2072};
+const DAY=[['logout',20071,5029161195],['login_failed',20008,5009744589],['file_read',19907,4974160721],['login_ok',19844,4955245129],['port_scan',19804,4941633315]];
+const fmtMB=b=>(b/1048576).toFixed(1)+' M';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let fastMode=false;
+const wait=ms=>fastMode?Promise.resolve():sleep(ms);
+function ts(){ const d=new Date(); return d.toTimeString().slice(0,8); }
+
+/* ================= state ================= */
+const S={busy:false,activeTerm:'T1',
+  terms:{T1:{label:'T1  shell',cwd:HOME,mode:'shell',lines:[]},T2:{label:'T2  mongosh, then PySpark',cwd:HOME,mode:'shell',lines:[]},T3:{label:'T3  PySpark (step 11)',cwd:HOME,mode:'shell',lines:[]}},
+  fs:new Map(),fresh:new Set(),procs:[],containers:[],pid:3100,
+  hdfs:{up:false,files:new Map(),nextBlk:1073741830,used:41200000,cap:41980000000,flow:null},
+  mongo:{up:false,imported:0,importPct:0,indexes:['_id_'],before:null,after:null,lastAgg:false},
+  hbase:{installed:false,up:false,events:new Map(),seq:new Map(),seqCreated:false,eventsCreated:false,lastRange:null,seqWrites:[0,0,0,0,0],lastSeqBatch:null},
+  spark:{T2:false,T3:false,pushdown:false},
+  timing:{hdfs:null,mongo:null,hbase:null,hbaseWall:null},
+  evidence:{}
+};
+const RKMAX='9223372036854775807';
+function addFs(path,type,size){ const parts=path.split('/'); for(let i=2;i<parts.length;i++){ const pre=parts.slice(0,i).join('/'); if(pre!=='/home'&&!S.fs.has(pre)) S.fs.set(pre,{type:'dir'}); } if(!S.fs.has(path)){ S.fresh.add(path); setTimeout(()=>S.fresh.delete(path),4000); } S.fs.set(path,{type,size}); }
+['/opt','/opt/hadoop','/opt/spark','/tmp',HOME].forEach(p=>S.fs.set(p,{type:'dir'}));
+S.fresh.clear();
+function newPid(){ S.pid+=rnd(9,230); return S.pid; }
+function addProc(key,name,kind,term,note){ S.procs=S.procs.filter(p=>p.key!==key); S.procs.push({key,name,pid:newPid(),kind,term,note}); }
+function rmProc(key){ S.procs=S.procs.filter(p=>p.key!==key); }
+
+/* ================= terminals ================= */
+const MAXL=500; let termDirty=true, termJump=false;
+function tpush(term,html){ const T=S.terms[term]; T.lines.push(html); if(T.lines.length>MAXL) T.lines.splice(0,T.lines.length-MAXL); termDirty=true; }
+function out(term,text,cls){ String(text).split('\n').forEach(l=>tpush(term,cls?`<span class="${cls}">${esc(l)}</span>`:esc(l))); }
+function promptHtml(term){ const T=S.terms[term];
+  if(T.mode==='py') return '<span class="pr">&gt;&gt;&gt; </span>';
+  if(T.mode==='mongo') return '<span class="pr">bda&gt; </span>';
+  const cwd=T.cwd===HOME?'~':T.cwd.startsWith(HOME+'/')?'~'+T.cwd.slice(HOME.length):T.cwd;
+  return `<span class="pr">hadoop@ubuntuOS</span>:<span class="pa">${esc(cwd)}</span>$ `; }
+function echo(term,code){
+  const T=S.terms[term], lines=code.split('\n');
+  lines.forEach((l,i)=>{ const pre=i===0?promptHtml(term):(T.mode==='py'||T.mode==='mongo'?'<span class="pr">... </span>':'<span class="dim">&gt; </span>'); tpush(term,pre+esc(l)); });
+  if(T.mode==='py' && lines.length>1) tpush(term,'<span class="pr">... </span>');
+}
+function renderTerms(){
+  $('#termTabs').innerHTML=Object.entries(S.terms).map(([k,T])=>{ const dot=T.mode==='busy'?'busy':T.mode==='py'?'py':T.mode==='mongo'?'mongo':''; return `<button role="tab" aria-selected="${k===S.activeTerm}" class="${k===S.activeTerm?'on':''}" data-t="${k}"><span class="dot ${dot}"></span>${T.label}</button>`; }).join('');
+  const body=$('#termBody'), T=S.terms[S.activeTerm];
+  const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<40;
+  body.innerHTML=T.lines.join('\n')+(T.mode==='busy'?'':'\n'+promptHtml(S.activeTerm));
+  if(atBottom||termJump){ body.scrollTop=body.scrollHeight; termJump=false; }
+  termDirty=false;
+}
+$('#termTabs').addEventListener('click',e=>{ const b=e.target.closest('button[data-t]'); if(!b) return; S.activeTerm=b.dataset.t; termJump=true; renderTerms(); });
+function showTerm(t){ if(S.activeTerm!==t){ S.activeTerm=t; termJump=true; } termDirty=true; }
+
+/* ================= helpers ================= */
+function fly(fromEl,toEl,color,n=1){
+  if(fastMode||!fromEl||!toEl||reduceMotion||!hasGsap) return;
+  for(let k=0;k<n;k++) setTimeout(()=>{
+    const a=fromEl.getBoundingClientRect(), b=toEl.getBoundingClientRect();
+    if(a.bottom<0||a.top>innerHeight||b.bottom<0||b.top>innerHeight) return;
+    const d=document.createElement('div'); d.className='dot'; d.style.background=color; $('#flight').appendChild(d);
+    gsap.fromTo(d,{x:a.left+a.width/2,y:a.top+a.height/2},{x:b.left+b.width/2+rnd(-30,30),y:b.top+b.height/2,duration:.65,ease:'power1.inOut',onComplete:()=>d.remove()});
+  },k*120);
+}
+async function progress(ms,steps,fn){ for(let i=1;i<=steps;i++){ fn(i/steps); renderAll(); await wait(ms/steps); } }
+function blkId(){ return S.hdfs.nextBlk++; }
+function putFile(path,bytes,kind){ const blocks=[]; let left=bytes; while(left>0){ const len=Math.min(BLOCK,left); blocks.push({id:blkId(),len,gen:1000+rnd(1,40),kind}); left-=len; } S.hdfs.files.set(path,{size:bytes,blocks}); S.hdfs.used+=bytes; return blocks; }
+function rmFile(path){ const f=S.hdfs.files.get(path); if(f){ S.hdfs.used-=f.size; S.hdfs.files.delete(path); } }
+function oid(){ return [...Array(24)].map(()=>'0123456789abcdef'[rnd(0,15)]).join(''); }
+function fmtTable(cols,rows,align){ const data=rows.map(r=>cols.map(c=>String(r[c]))); const w=cols.map((c,i)=>Math.max(c.length,...data.map(r=>r[i].length))); const line='+'+w.map(n=>'-'.repeat(n)).join('+')+'+'; const row=r=>'|'+r.map((v,i)=>align==='right'?v.padStart(w[i]):v.padStart(w[i])).join('|')+'|'; return [line,row(cols),line,...data.map(row),line].join('\n'); }
+function rkey(salt,host,rts){ return `<span class="k-s">${salt}</span>|<span class="k-h">${host}</span>|<span class="k-t">${rts}</span>`; }
+function hbaseBanner(term){ out(term,'SLF4J: Class path contains multiple SLF4J bindings.\nSLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.\nHBase Shell\nUse "help" to get list of supported commands.\nUse "exit" to quit this interactive shell.\nFor Reference, please visit: http://hbase.apache.org/2.0/book.html#shell\nVersion 2.5.8\nTook 0.0021 seconds','dim'); }
+let hbLine=0;
+function hb(term,cmd,result){ hbLine++; tpush(term,`<span class="pr">hbase:${String(hbLine).padStart(3,'0')}:0&gt; </span>${esc(cmd)}`); if(result) out(term,result); }
+function took(){ return `Took ${(Math.random()*0.04+0.004).toFixed(4)} seconds`; }
+function hbTime(){ const d=new Date(); return d.toISOString().slice(0,23).replace('Z',''); }
+function scanText(map,from,to){
+  const keys=[...map.keys()].sort(); const sel=keys.filter(k=>(from==null||k>=from)&&(to==null||k<to));
+  const lines=['ROW                                  COLUMN+CELL'];
+  sel.forEach(k=>{ const cells=map.get(k); Object.keys(cells).sort().forEach(c=>lines.push(` ${k.padEnd(36)} column=${c}, timestamp=${cells[c].t}, value=${cells[c].v}`)); });
+  lines.push(`${sel.length} row(s)`); return {text:lines.join('\n'),rows:sel};
+}
+
+/* ================= rendering ================= */
+function renderStatus(){
+  const svc=(on,cls,label)=>`<span class="svc ${on?'on '+cls:''}">${label}</span>`;
+  $('#statusbar').innerHTML='Services: '+svc(S.hdfs.up,'h','HDFS')+svc(S.mongo.up,'m','MongoDB (Docker)')+svc(S.hbase.up,'b','HBase (standalone)')+svc(S.spark.T2||S.spark.T3,'s','Spark');
+}
+function renderMachine(){
+  const paths=[...S.fs.keys()].sort((a,b)=>a.localeCompare(b));
+  const cwdMap={}; Object.entries(S.terms).forEach(([k,T])=>{ if(T.mode==='shell'||T.mode==='busy') (cwdMap[T.cwd]=cwdMap[T.cwd]||[]).push(k); });
+  const fs=paths.map(p=>{ const n=S.fs.get(p), depth=p.split('/').length-2, name=p===HOME?'/home/hadoop':p.slice(p.lastIndexOf('/')+1)||'/';
+    let h=`<span class="${n.type==='dir'?'d':'f'} ${S.fresh.has(p)?'new':''}">${esc(name)}${n.type==='dir'?'/':''}${p===HOME?' (~)':''}</span>`;
+    if(n.size) h+=`<span class="sz">${n.size}</span>`;
+    (cwdMap[p]||[]).forEach(t=>h+=`<span class="cwd ${t}">${t}</span>`);
+    return `<div class="n" style="padding-left:${Math.max(0,depth)*12}px">${h}</div>`; }).join('');
+  const procs=S.procs.length?S.procs.map(p=>`<div class="proc ${p.kind}"><b>${esc(p.name)}</b><span class="st">running</span><small>${p.kind==='dk'?'container':'PID '+p.pid}${p.term?', started in '+p.term:''}${p.note?', '+esc(p.note):''}</small></div>`).join(''):'<div class="none">Nothing from this lab is running yet.</div>';
+  $('#machine').innerHTML=`<div class="machine-grid"><div><div class="mini-h">Local folders and files</div><div class="fs">${fs}</div></div><div><div class="mini-h">Running</div><div class="procs">${procs}</div><div class="legend"><span><i style="background:#E76F00"></i>Java (shows in <code>jps</code>)</span><span><i style="background:#3776AB"></i>Python</span><span><i style="background:#1D63ED"></i>Docker container</span></div></div></div>`;
+}
+function renderHdfs(){
+  const H=S.hdfs;
+  $('#hdfsState').textContent=H.up?'NameNode, DataNode and SecondaryNameNode running; replication 1':'stopped';
+  if(!H.up && !H.files.size){ $('#hdfs').innerHTML='<div class="none">HDFS is not running yet. It starts in step 2.</div>'; return; }
+  let nn='<div class="nn"><div class="mini-h" style="color:var(--hdfs)">NameNode: metadata only (names, sizes, block lists)</div>';
+  if(!H.files.size) nn+='<div class="none">/user/hadoop/lab3 is empty</div>';
+  H.files.forEach((f,p)=>{ nn+=`<div class="row1"><span>${esc(p)}</span><b class="tnum">${fmtMB(f.size)}</b><span class="blks">${f.blocks.map(b=>'blk_'+b.id).join(', ')}</span></div>`; });
+  nn+='</div>';
+  let dn='<div class="dn"><div class="mini-h">DataNode (127.0.0.1:9866): the blocks themselves, as files on its local disk</div>';
+  H.files.forEach((f,p)=>{ dn+=`<div class="blockrow">${f.blocks.map(b=>`<div class="blk ${b.kind==='copy'?'copy':''} ${b.fresh?'new':''}" style="flex:${b.len/BLOCK}" title="blk_${b.id}, ${b.len} bytes"><b>blk_${b.id}</b>${(b.len/1048576).toFixed(1)} MB</div>`).join('')}</div>`; f.blocks.forEach(b=>b.fresh=false); });
+  if(!H.files.size) dn+='<div class="none">no blocks yet</div>';
+  if(H.flow) dn+=`<div class="flow">${H.flow}</div>`;
+  const pct=Math.max(.5,H.used/H.cap*100);
+  dn+=`<div class="mini-h mt-2">Capacity used: ${fmtMB(H.used)} of 39.1 G</div><div class="bar"><i style="width:${pct}%"></i></div></div>`;
+  $('#hdfs').innerHTML=nn+dn;
+}
+function renderMongo(){
+  const M=S.mongo;
+  $('#mongoState').textContent=M.up?'container "mongo" (image mongo:7), port 27017':'not running';
+  if(!M.up && !M.imported){ $('#mongo').innerHTML='<div class="none">MongoDB starts in step 4, inside a Docker container.</div>'; return; }
+  let h=`<div class="mrow"><b>bda.events</b><span class="tnum">${M.imported.toLocaleString()} documents</span>${M.importPct>0&&M.importPct<1?`<span>importing ${(M.importPct*100).toFixed(0)}%</span>`:''}</div>`;
+  if(M.importPct>0&&M.importPct<1) h+=`<div class="bar"><i style="width:${M.importPct*100}%;background:var(--mongo)"></i></div>`;
+  h+=`<div class="mrow mt-1"><span style="font-size:.74rem;color:var(--muted)">Indexes:</span>${M.indexes.map(i=>`<span class="ichip ${i!=='_id_'&&M.newIdx?'new':''}">${i}</span>`).join('')}</div>`;
+  const rows=[];
+  if(M.before) rows.push({lbl:'Before index',sub:'COLLSCAN',ex:M.before.ex,ret:M.before.ret,ms:M.before.ms});
+  if(M.after) rows.push({lbl:'After index',sub:'IXSCAN (under FETCH)',ex:M.after.ex,ret:M.after.ret,ms:M.after.ms});
+  if(rows.length){
+    h+=`<div class="mini-h mt-2">Query: { host: "host042", event_date: "2026-08-05" }. Bar = documents examined, out of 2,000,000; black = returned.</div><div class="plan">`;
+    rows.forEach(r=>{ h+=`<div class="lbl">${r.lbl}<small>${r.sub}, ${r.ms} ms</small></div><div class="ptrack"><i style="width:${Math.max(.4,r.ex/N*100)}%"></i><i class="ret" style="width:${Math.max(.3,r.ret/N*100)}%"></i><span>${r.ex.toLocaleString()} examined, ${r.ret} returned</span></div>`; });
+    h+='</div>';
+    if(M.after){
+      h+=`<div class="mini-h mt-2">How the index finds them: entries sorted by host, then date. It jumps to host042 and 2026-08-05 and reads only that slice.</div><div class="ixstrip" aria-hidden="true">${[...Array(60)].map((_,i)=>`<i class="${i===12?'hit':''}"></i>`).join('')}</div>`;
+      h+=`<div class="headline">totalDocsExamined fell from <b>${M.before?M.before.ex.toLocaleString():'2,000,000'}</b> to <b>${M.after.ex}</b>: <b class="big">${Math.round((M.before?M.before.ex:N)/M.after.ex).toLocaleString()}×</b> fewer documents read. That ratio is the headline number for your report.</div>`;
+    }
+  }
+  if(M.lastAgg) h+=`<div class="mt-2" style="font-size:.76rem;border-left:3px solid var(--danger);padding-left:.5rem">The aggregation filtered on <code>event_date</code> alone. The index starts with <code>host</code>, so it cannot help: that pipeline still scanned all 2,000,000 documents.</div>`;
+  $('#mongo').innerHTML=h;
+}
+function renderHbase(){
+  const B=S.hbase;
+  $('#hbaseState').textContent=B.up?'HMaster running: master, region server and ZooKeeper in one JVM; data in /tmp/hbase-hadoop':B.installed?'installed, stopped':'not installed';
+  if(!B.installed){ $('#hbase').innerHTML='<div class="none">HBase is installed and started in step 8.</div>'; return; }
+  let h=`<div class="mini-h">Row key design: salt | host | reversed timestamp</div><div class="anat">${rkey('03','host042','9223370554764775807')}</div><div class="legend"><span><i style="background:var(--salt)"></i>salt: spreads writes across regions</span><span><i style="background:var(--hostc)"></i>host: keeps one host's rows together</span><span><i style="background:var(--rts)"></i>Long.MAX minus time: newest sorts first</span></div>`;
+  if(B.eventsCreated){
+    h+=`<div class="mini-h mt-2">Table <code>events</code>: families <code>meta</code> and <code>net</code>, rows kept sorted by key</div>`;
+    const keys=[...B.events.keys()].sort();
+    if(!keys.length) h+='<div class="none">empty</div>';
+    else h+='<div class="hrows">'+keys.map(k=>{ const [s,ho,t]=k.split('|'); const cells=B.events.get(k); const hit=B.lastRange&&k>=B.lastRange[0]&&k<B.lastRange[1]; return `<div class="r ${hit?'hit':''}"><span>${rkey(s,ho,t)}</span><span class="c">${Object.keys(cells).sort().map(c=>c+'='+cells[c].v).join(', ')}</span></div>`; }).join('')+'</div>';
+    if(B.lastRange) h+=`<div style="font-size:.72rem;margin-top:.2rem">Highlighted: the range scan from <code>${B.lastRange[0]}</code> up to (not including) <code>${B.lastRange[1]}</code>.</div>`;
+  }
+  if(B.seqCreated){
+    const ranges=[['',"'2'"],["'2'","'4'"],["'4'","'6'"],["'6'","'8'"],["'8'",'']], mx=Math.max(1,...B.seqWrites);
+    h+=`<div class="mini-h mt-2">Table <code>events_seq</code>: pre-split into 5 regions by key range. Bar = writes received.</div><div class="regions">${ranges.map((r,i)=>`<div class="region ${B.seqWrites[i]===mx&&B.seqWrites.filter(x=>x>0).length===1?'hot':''}" id="reg${i}"><b>Region ${i+1}</b><span class="rng">${r[0]||'start'} to ${r[1]||'end'}</span><div class="load"><i style="height:${B.seqWrites[i]/mx*100}%"></i></div><span class="n">${B.seqWrites[i]}</span></div>`).join('')}</div>`;
+    if(B.lastSeqBatch) h+=`<div style="font-size:.74rem;margin-top:.3rem">${B.lastSeqBatch}</div>`;
+  }
+  $('#hbase').innerHTML=h;
+}
+function renderSpark(){
+  const sp=S.spark, T=S.timing;
+  $('#sparkState').textContent=sp.T2||sp.T3?`pyspark running in ${[sp.T2&&'T2',sp.T3&&'T3'].filter(Boolean).join(' and ')}`:'';
+  let h='';
+  if(sp.pushdown) h+=`<div class="mini-h">Filter pushdown (step 7)</div><div class="push"><div class="bx s"><b>Spark</b><br>df.filter("host = 'host042'")</div><div class="ar">sends<br>$match ›<br>‹ returns<br>${(Object.values(A42).reduce((a,b)=>a+b,0)).toLocaleString()} docs</div><div class="bx m"><b>MongoDB</b><br>{ $match: { host: "host042" } } runs inside the database</div></div><div style="font-size:.72rem;margin-top:.25rem">Without pushdown, all 2,000,000 documents would travel to Spark to be filtered there.</div>`;
+  if(T.hdfs||T.mongo||T.hbase){
+    const rows=[
+      ['h','HDFS via Spark','Full scan: read every block of the 325 MB file (twice, counting schema inference), keep 471 lines',T.hdfs],
+      ['m','MongoDB, no index','COLLSCAN of 2,000,000 documents (from step 5)',S.mongo.before?S.mongo.before.ms/1000:null],
+      ['m','MongoDB with index','Index walk straight to the 471 matching keys',T.mongo],
+      ['b','HBase prefix scan','Jump to the key range; read only the rows inside it (here only the 2 rows you inserted)',T.hbase]
+    ].filter(r=>r[3]!=null);
+    const lg=v=>Math.max(2,(Math.log10(v*1000)+0.3)/(Math.log10(60000)+0.3)*100);
+    h+=`<div class="mini-h ${sp.pushdown?'mt-3':''}">All events for host042 on 2026-08-05 (bars on a log scale)</div><table class="cmpt"><tr><th>Store</th><th>Time</th><th>Why</th></tr>${rows.map(r=>`<tr><td><b>${r[1]}</b></td><td class="tnum">${r[3]>=1?r[3].toFixed(1)+' s':(r[3]*1000).toFixed(r[3]<0.01?1:0)+' ms'}<div class="tbar ${r[0]}" style="width:${lg(r[3])}px;max-width:100%"></div></td><td>${r[2]}</td></tr>`).join('')}</table>`;
+    if(T.hbaseWall) h+=`<div style="font-size:.72rem;margin-top:.3rem;color:var(--muted)">The HBase line counts only the scan ("Took …"). Starting the hbase shell JVM took about ${T.hbaseWall} s on top.</div>`;
+  }
+  if(!h) h='<div class="none">Spark appears in step 7, and the comparison table in step 11.</div>';
+  $('#spark').innerHTML=h;
+}
+function renderChecklist(){ document.querySelectorAll('#checklist li').forEach(li=>li.classList.toggle('got',!!S.evidence[li.dataset.k])); }
+function renderAll(){ renderStatus(); renderMachine(); renderHdfs(); renderMongo(); renderHbase(); renderSpark(); renderChecklist(); if(termDirty) renderTerms(); }
+setInterval(()=>{ if(!fastMode) renderAll(); },400);
+
+/* ================= the lab, as commands ================= */
+const GEN_PY=`import json, random
+from datetime import datetime, timedelta
+
+HOSTS = [f"host{i:03d}" for i in range(200)]
+ACTIONS = ["login_ok", "login_failed", "file_read", "port_scan", "logout"]
+start = datetime(2026, 8, 1)
+
+with open("events.json", "w") as f:
+    for i in range(2_000_000):
+        ts = start + timedelta(seconds=random.randint(0, 20 * 86400))
+        f.write(json.dumps({
+            "event_id": i,
+            "event_time": ts.strftime("%Y-%m-%d %H:%M:%S"),
+            "event_date": ts.strftime("%Y-%m-%d"),
+            "host": random.choice(HOSTS),
+            "action": random.choice(ACTIONS),
+            "bytes": random.randint(100, 500000),
+            "src_ip": f"10.0.{random.randint(0,255)}.{random.randint(1,254)}",
+        }) + "\\n")`;
+const P='/user/hadoop/lab3';
+const C=o=>o;
+const sparkBanner=(term,pkgs)=>{ const o=[]; if(pkgs){ o.push(':: loading settings :: url = jar:file:/opt/spark/jars/ivy-2.5.1.jar!/org/apache/ivy/core/settings/ivysettings.xml','Ivy Default Cache set to: /home/hadoop/.ivy2/cache','The jars for the packages stored in: /home/hadoop/.ivy2/jars','org.mongodb.spark#mongo-spark-connector_2.12 added as a dependency',':: resolving dependencies :: org.apache.spark#spark-submit-parent;1.0','\tfound org.mongodb.spark#mongo-spark-connector_2.12;10.3.0 in central','\tfound org.mongodb#mongodb-driver-sync;4.8.2 in central','\tfound org.mongodb#bson;4.8.2 in central','\tfound org.mongodb#mongodb-driver-core;4.8.2 in central','\tfound org.mongodb#bson-record-codec;4.8.2 in central',':: retrieving :: org.apache.spark#spark-submit-parent','\t5 artifacts copied, 0 already retrieved'); }
+  o.push('Setting default log level to "WARN".','Welcome to','      ____              __','     / __/__  ___ _____/ /__',"    _\\ \\/ _ \\/ _ `/ __/  '_/",'   /__ / .__/\\_,_/_/ /_/\\_\\   version 3.5.1','      /_/','','Using Python version 3.12.3 (main, Apr 10 2024 05:33:47)',`Spark context Web UI available at http://ubuntuOS:${term==='T2'?4040:4041}`,`Spark context available as 'sc' (master = local[*], app id = local-${Date.now()}).`,"SparkSession available as 'spark'."); out(term,o.join('\n')); };
+const mongoDoc=(id,t,host,action,bytes,ip)=>`  {\n    _id: ObjectId('${oid()}'),\n    event_id: ${id},\n    event_time: '${t}',\n    event_date: '${t.slice(0,10)}',\n    host: '${host}',\n    action: '${action}',\n    bytes: ${bytes},\n    src_ip: '${ip}'\n  }`;
+
+const STEPS=[
+ {title:'Generate the shared dataset',short:'2M events',intro:'One dataset, three stores. Generate two million synthetic security events as JSON lines.',
+  cmds:[
+   C({term:'T1',label:'Make the folder and go into it',code:'mkdir -p ~/lab3 && cd ~/lab3',run:()=>{ addFs(HOME+'/lab3','dir'); S.terms.T1.cwd=HOME+'/lab3'; },what:'<code>&amp;&amp;</code> runs <code>cd</code> only if <code>mkdir</code> succeeded. <code>-p</code> makes it safe to run twice.',see:'~/lab3 appears and "T1" moves into it.',vm:'instant',focus:['zMachine']}),
+   C({term:'T1',label:'Write gen.py',code:"cat > gen.py <<'EOF'\n"+GEN_PY+"\nEOF",run:()=>addFs(HOME+'/lab3/gen.py','file','0.8 K'),what:'A here document writes the script. Each event gets a random time in the 20 days from 1 August 2026, one of 200 hosts, and a <code>event_date</code> field copied from the time: that field is what MongoDB will index later.',see:'gen.py appears in ~/lab3.',vm:'instant',focus:['zMachine']}),
+   C({term:'T1',label:'Run it',code:'python3 gen.py',run:async()=>{ addProc('gen','python3 gen.py','py','T1','writing events.json'); S.terms.T1.mode='busy'; await progress(3500,14,f=>addFs(HOME+'/lab3/events.json','file',Math.round(325*f)+' M')); rmProc('gen'); S.terms.T1.mode='shell'; },
+     what:'Writes 2,000,000 lines, one JSON object per line ("JSON lines"). Every system in this lab can read that format directly. Nothing is printed while it runs.',see:'events.json grows to about 325 MB.',vm:'about 30 to 60 seconds',focus:['zMachine']}),
+   C({term:'T1',label:'Check size and line count',code:'ls -lh events.json && wc -l events.json',run:()=>out('T1',`-rw-rw-r-- 1 hadoop hadoop 325M Sep 28 10:04 events.json\n2000000 events.json`),what:'<code>ls -lh</code> shows the size in human units; <code>wc -l</code> counts lines, which here means events.',see:'325M and 2000000. The lab sheet says "roughly 350 MB": the exact file is 340,336,945 bytes, which <code>ls -h</code> shows as 325M because it counts in units of 1,048,576 bytes.',vm:'instant',focus:['zMachine']})
+  ],take:['JSON lines is the common format: one record per line, readable by HDFS tools, mongoimport and Spark.','Keep the file: it is loaded three times so the comparison is fair.']},
+ {title:'Load into HDFS and inspect the blocks',short:'HDFS blocks',intro:'Upload the file, then use <code>fsck</code> to see how HDFS actually stored it.',
+  cmds:[
+   C({term:'T1',label:'Start HDFS',code:'start-dfs.sh',run:async()=>{ out('T1','Starting namenodes on [localhost]'); await wait(500); out('T1','Starting datanodes'); await wait(400); out('T1','Starting secondary namenodes [ubuntuOS]'); addProc('nn','NameNode','jvm','T1','metadata, port 9000 and UI 9870'); addProc('dn','DataNode','jvm','T1','stores blocks, port 9866'); addProc('snn','SecondaryNameNode','jvm','T1','checkpoints NameNode metadata'); S.hdfs.up=true; },
+     what:'Starts the three HDFS daemons from lab 1.1. The NameNode holds the file system\'s metadata; the DataNode holds the actual data blocks; the SecondaryNameNode periodically merges the NameNode\'s edit log.',see:'Three Java processes appear and the HDFS panel comes alive.',vm:'about 10 to 20 seconds',focus:['zMachine','zHdfs']}),
+   C({term:'T1',label:'Make the HDFS folder',code:'hdfs dfs -mkdir -p /user/$USER/lab3',run:()=>{},what:'Here <code>$USER</code> is expanded by the Linux shell to <code>hadoop</code>, so the folder is <code>/user/hadoop/lab3</code>. This folder exists only in the NameNode\'s metadata; there is nothing on a DataNode until a file arrives.',see:'The NameNode panel shows the empty folder.',vm:'about 2 seconds (JVM start)',focus:['zHdfs']}),
+   C({term:'T1',label:'Upload the file',code:'hdfs dfs -put ~/lab3/events.json /user/$USER/lab3/',run:async()=>{ const el=$('#termBody'); S.hdfs.flow='Uploading: the client asks the NameNode where to write, then streams each block straight to the DataNode.'; let blocks=[]; const total=FILE_BYTES; S.hdfs.files.set(P+'/events.json._COPYING_',{size:0,blocks:[]}); for(let done=0;done<total;){ const len=Math.min(BLOCK,total-done); const b={id:blkId(),len,gen:1000+rnd(1,40),fresh:true}; blocks.push(b); done+=len; S.hdfs.files.get(P+'/events.json._COPYING_').blocks=blocks.slice(); S.hdfs.files.get(P+'/events.json._COPYING_').size=done; fly(el,$('#zHdfs .dn'),'var(--hdfs)',4); renderAll(); await wait(1100); } S.hdfs.files.delete(P+'/events.json._COPYING_'); S.hdfs.files.set(P+'/events.json',{size:total,blocks}); S.hdfs.used+=total; S.hdfs.flow=null; },
+     what:'Copies the local file into HDFS. While it uploads, the file is named <code>events.json._COPYING_</code>, renamed only when complete, so readers never see half a file. HDFS cuts it into 128 MB blocks as it goes.',see:'Three blocks land on the DataNode: two full 128 MB blocks and one of 68.6 MB. The NameNode records only the file name and the three block IDs.',vm:'about 5 to 15 seconds',focus:['zHdfs']}),
+   C({term:'T1',label:'Space used',code:'hdfs dfs -du -h /user/$USER/lab3',run:()=>out('T1','324.6 M  324.6 M  /user/hadoop/lab3/events.json'),what:'Two columns: the file\'s size, and the raw disk space it uses across all replicas. They are equal because replication is 1 on your single-DataNode cluster.',see:'324.6 M twice. (HDFS rounds slightly differently from <code>ls -h</code>.)',vm:'about 2 seconds',focus:['zHdfs']}),
+   C({term:'T1',label:'Inspect the blocks with fsck',code:'hdfs fsck /user/$USER/lab3/events.json -files -blocks -locations',run:()=>{ const f=S.hdfs.files.get(P+'/events.json'); const bp='BP-1489201775-127.0.1.1-1789012345678'; const lines=[`Connecting to namenode via http://localhost:9870/fsck?ugi=hadoop&files=1&blocks=1&locations=1&path=%2Fuser%2Fhadoop%2Flab3%2Fevents.json`,`FSCK started by hadoop (auth:SIMPLE) from /127.0.0.1 for path /user/hadoop/lab3/events.json at Mon Sep 28 10:07:12 PKT 2026`,'',`/user/hadoop/lab3/events.json ${FILE_BYTES} bytes, replicated: replication=1, 3 block(s):  OK`];
+       f.blocks.forEach((b,i)=>lines.push(`${i}. ${bp}:blk_${b.id}_${b.gen} len=${b.len} Live_repl=1  [DatanodeInfoWithStorage[127.0.0.1:9866,DS-7f3e1c2a-5b9d-4e8a-a1c6-2d0f9b3e4c11,DISK]]`));
+       lines.push('','Status: HEALTHY',' Number of data-nodes:\t1',' Number of racks:\t\t1',' Total dirs:\t\t\t0',' Total symlinks:\t\t0','','Replicated Blocks:',` Total size:\t${FILE_BYTES} B`,' Total files:\t1',` Total blocks (validated):\t3 (avg. block size ${Math.round(FILE_BYTES/3)} B)`,' Minimally replicated blocks:\t3 (100.0 %)',' Over-replicated blocks:\t0 (0.0 %)',' Under-replicated blocks:\t0 (0.0 %)',' Mis-replicated blocks:\t\t0 (0.0 %)',' Default replication factor:\t1',' Average block replication:\t1.0',' Missing blocks:\t\t0',' Corrupt blocks:\t\t0',' Missing replicas:\t\t0 (0.0 %)','','The filesystem under path \'/user/hadoop/lab3/events.json\' is HEALTHY');
+       out('T1',lines.join('\n')); S.evidence.fsck=true; },
+     what:'Asks the NameNode for a health report on one file. <code>-files</code> prints the file line, <code>-blocks</code> lists each block with its ID and length, <code>-locations</code> adds which DataNode holds it.',see:'3 blocks with lengths 134217728, 134217728 and 71901489 bytes, all on 127.0.0.1:9866, Status HEALTHY. Record the block count. The block IDs match the boxes on the DataNode.',vm:'about 3 seconds',focus:['zHdfs']})
+  ],take:['A 325 MB file is three blocks: two full 128 MB blocks and a smaller last one. A block is only as big as the data in it.','The NameNode knows names and block lists; the DataNode stores the blocks. <code>fsck</code> shows the mapping between them.','The <code>$USER</code> in these commands works because the Linux shell expands it before HDFS sees the path.']},
+ {title:'Practise the HDFS shell',short:'HDFS shell',intro:'The commands you will use all semester. Notice where they mirror POSIX and where they do not.',
+  cmds:[
+   C({term:'T1',label:'List with sizes',code:'hdfs dfs -ls -h /user/$USER/lab3',run:()=>out('T1','Found 1 items\n-rw-r--r--   1 hadoop supergroup    324.6 M 2026-09-28 10:06 /user/hadoop/lab3/events.json'),what:'Like <code>ls -l</code>. The second column is the replication factor (1), where a local listing would show the link count.',see:'One file, replication 1, owner hadoop, group supergroup.',vm:'about 2 seconds',focus:['zHdfs']}),
+   C({term:'T1',label:'First kilobyte',code:'hdfs dfs -head /user/$USER/lab3/events.json',run:()=>out('T1',DATA.head),what:'Prints the first 1 KB of the file. It counts bytes, not lines, so the last line is cut off mid-record.',see:'The first events, from event_id 0, ending in a broken line.',vm:'about 2 seconds',focus:['zHdfs']}),
+   C({term:'T1',label:'Last kilobyte',code:'hdfs dfs -tail /user/$USER/lab3/events.json',run:()=>out('T1',DATA.tail),what:'Prints the last 1 KB. The first line is cut off this time. The tail lives in the third block, so HDFS reads only that block.',see:'The last events, ending at event_id 1999999.',vm:'about 2 seconds',focus:['zHdfs']}),
+   C({term:'T1',label:'Copy',code:'hdfs dfs -cp /user/$USER/lab3/events.json /user/$USER/lab3/copy.json',run:async()=>{ S.hdfs.flow='Copying: the data streams out of the DataNode to the hdfs client process and back into new blocks.'; const src=$('#zHdfs .dn'); const nb=[]; let left=FILE_BYTES; while(left>0){ const len=Math.min(BLOCK,left); nb.push({id:blkId(),len,gen:1000+rnd(1,40),kind:'copy',fresh:true}); left-=len; S.hdfs.files.set(P+'/copy.json',{size:FILE_BYTES-left,blocks:nb.slice()}); fly(src,$('#termBody'),'#7C3AED',2); renderAll(); await wait(700); fly($('#termBody'),src,'#7C3AED',2); await wait(500); } S.hdfs.used+=FILE_BYTES; S.hdfs.flow=null; },
+     what:'Makes a full second copy: new block IDs, new bytes on disk. No output on success.',see:'Three new purple blocks with new IDs. Capacity used doubles.',vm:'a few seconds',focus:['zHdfs'],
+     fix:'The lab sheet says <code>-cp</code> is fast because "it is a server-side copy; nothing travels to your client". That is not how <code>hdfs dfs -cp</code> works: the client process reads every byte from the DataNode and writes it back as new blocks. It is fast here because the client and the DataNode are the same machine. (For a truly distributed copy between clusters you would use <code>hadoop distcp</code>.)'}),
+   C({term:'T1',label:'Rename',code:'hdfs dfs -mv /user/$USER/lab3/copy.json /user/$USER/lab3/events-backup.json',run:()=>{ const f=S.hdfs.files.get(P+'/copy.json'); S.hdfs.files.delete(P+'/copy.json'); S.hdfs.files.set(P+'/events-backup.json',f); },what:'Within HDFS, a move is a rename in the NameNode\'s metadata. No block is touched, so it is instant whatever the file size. Compare with the copy you just did.',see:'Only the name changes in the NameNode panel; the purple blocks keep their IDs.',vm:'about 2 seconds, all of it JVM start',focus:['zHdfs']}),
+   C({term:'T1',label:'Count',code:'hdfs dfs -count -h /user/$USER/lab3',run:()=>out('T1','           1            2            649.2 M /user/hadoop/lab3'),what:'Prints directory count, file count and total content size for the path.',see:'1 directory, 2 files, 649.2 M: the original plus the backup.',vm:'about 2 seconds',focus:['zHdfs']}),
+   C({term:'T1',label:'Delete the backup',code:'hdfs dfs -rm -skipTrash /user/$USER/lab3/events-backup.json',run:()=>{ rmFile(P+'/events-backup.json'); out('T1','Deleted /user/hadoop/lab3/events-backup.json'); },what:'Deletes the file. <code>-skipTrash</code> removes it immediately instead of moving it to <code>.Trash</code> (if trash is enabled). The NameNode drops the entry at once; the DataNode deletes the block files shortly after.',see:'The purple blocks disappear.',vm:'about 2 seconds',focus:['zHdfs']}),
+   C({term:'T1',label:'Free space',code:'hdfs dfs -df -h',run:()=>out('T1',`Filesystem               Size     Used  Available  Use%\nhdfs://localhost:9000  39.1 G  ${fmtMB(S.hdfs.used).replace(' ','')}     21.3 G    1%`),what:'Capacity of the whole HDFS: here, the space on the one DataNode\'s disk.',see:'Used is back to about the size of events.json plus earlier labs.',vm:'about 2 seconds',focus:['zHdfs']})
+  ],take:['HDFS commands look like Linux commands but talk to the NameNode and DataNodes.','Rename is a metadata change; copy moves every byte. That difference is why HDFS jobs write to a temporary name and rename at the end.','HDFS is write-once: no random writes or in-place edits. <code>-getmerge</code> exists to collapse the many part files that distributed jobs write.']},
+ {title:'Start MongoDB and import the data',short:'Mongo import',intro:'Run MongoDB in Docker, copy the file into the container, and import it.',
+  cmds:[
+   C({term:'T1',label:'Start a MongoDB container',code:'docker run -d --name mongo -p 27017:27017 mongo:7',run:async()=>{ out('T1',"Unable to find image 'mongo:7' locally\n7: Pulling from library/mongo"); for(const l of ['a1b2c3d4e5f6: Pull complete','b2c3d4e5f6a7: Pull complete','c3d4e5f6a7b8: Pull complete','d4e5f6a7b8c9: Pull complete']){ await wait(300); out('T1',l); } out('T1','Digest: sha256:'+oid()+oid().slice(0,16)+'\nStatus: Downloaded newer image for mongo:7\n'+oid()+oid()+oid().slice(0,16)); addProc('mongo','mongo (mongod inside Docker)','dk','T1','port 27017'); S.mongo.up=true; },
+     what:'<code>-d</code> runs it in the background, <code>--name mongo</code> lets later commands refer to it, <code>-p 27017:27017</code> forwards the VM\'s port 27017 to the container (Spark will need that). <code>mongo:7</code> is the official image, MongoDB 7. The first run downloads the image. If you see "permission denied … docker.sock", add yourself to the <code>docker</code> group (<code>sudo usermod -aG docker $USER</code>, then log out and in) or prefix with <code>sudo</code>.',see:'A Docker container appears; it is not a Java process, so it will never show in <code>jps</code>.',vm:'first time about 30 seconds (download), then 1 to 2 seconds',focus:['zMachine','zMongo']}),
+   C({term:'T1',label:'Give it time',code:'sleep 8',run:async()=>{ S.terms.T1.mode='busy'; await wait(1200); S.terms.T1.mode='shell'; },what:'mongod needs a few seconds before it accepts connections.',see:'Nothing printed.',vm:'8 seconds',focus:['zMongo']}),
+   C({term:'T1',label:'Copy the file into the container',code:'docker cp ~/lab3/events.json mongo:/events.json',run:async()=>{ fly($('#zMachine'),$('#zMongo'),'var(--mongo)',6); await wait(1200); out('T1','Successfully copied 340MB to mongo:/events.json'); },what:'The container has its own file system, so the file must be inside it for <code>mongoimport</code> (which runs inside the container) to read it.',see:'A third copy of the data now exists: local disk, HDFS, and the container.',vm:'a few seconds',focus:['zMongo']}),
+   C({term:'T1',label:'Import',code:'docker exec mongo mongoimport --db bda --collection events \\\n  --file /events.json --numInsertionWorkers 4',run:async()=>{ out('T1',`${new Date().toISOString().replace('Z','+0000')}\tconnected to: mongodb://localhost/`); S.terms.T1.mode='busy'; const steps=10; for(let i=1;i<=steps;i++){ const f=i/steps; S.mongo.importPct=f; S.mongo.imported=Math.round(N*f); const bar='#'.repeat(Math.round(f*24)).padEnd(24,'.'); out('T1',`${new Date().toISOString().replace('Z','+0000')}\t[${bar}] bda.events\t${(325*f).toFixed(1)}MB/325MB (${(f*100).toFixed(1)}%)`); fly($('#zMongo .mrow')||$('#zMongo'),$('#zMongo'),'var(--mongo)',2); renderAll(); await wait(450); } S.mongo.importPct=1; S.mongo.imported=N; S.terms.T1.mode='shell'; out('T1',`${new Date().toISOString().replace('Z','+0000')}\t${N} document(s) imported successfully. 0 document(s) failed to import.`); },
+     what:'<code>docker exec mongo …</code> runs a program inside the container. <code>mongoimport</code> reads JSON lines and inserts each line as a document into database <code>bda</code>, collection <code>events</code>; both are created automatically. Four insertion workers run in parallel.',see:'The document counter climbs to 2,000,000. Each document also gets an <code>_id</code> (an ObjectId) that was not in the file.',vm:'about 1 to 3 minutes',focus:['zMongo']}),
+   C({term:'T1',label:'Count documents',code:"docker exec mongo mongosh --quiet --eval 'db.getSiblingDB(\"bda\").events.countDocuments()'",run:()=>out('T1',String(N)),what:'Runs one line of JavaScript in the MongoDB shell. <code>getSiblingDB("bda")</code> switches to the bda database.',see:'2000000.',vm:'about 1 second',focus:['zMongo']})
+  ],take:['Docker runs MongoDB without installing it; the container has its own file system, hence <code>docker cp</code>.','mongoimport turns each JSON line into a document and adds an <code>_id</code>.','A database and collection exist as soon as you write to them; there is no CREATE TABLE.']},
+ {title:'Query MongoDB and read explain() before indexing',short:'COLLSCAN',intro:'Run the target query with no index, and read the plan.',
+  cmds:[
+   C({term:'T2',label:'Open the Mongo shell',code:'docker exec -it mongo mongosh bda --quiet',run:()=>{ S.terms.T2.mode='mongo'; },what:'<code>-it</code> makes it interactive. The prompt becomes <code>bda&gt;</code>, the current database. T2 is used so T1 stays free.',see:'T2\'s prompt changes to bda&gt;.',vm:'1 second',focus:['zMongo']}),
+   C({term:'T2',label:'Look at three matching events',code:'db.events.find({ host: "host042", event_date: "2026-08-05" }).limit(3)',run:async()=>{ await wait(500); out('T2','[\n'+[mongoDoc(15984,'2026-08-05 12:48:27','host042','file_read',435018,'10.0.216.238'),mongoDoc(18138,'2026-08-05 21:49:15','host042','port_scan',74413,'10.0.111.189'),mongoDoc(27142,'2026-08-05 15:09:03','host042','login_failed',355723,'10.0.14.121')].join(',\n')+'\n]'); },
+     what:'A find with two equality conditions. <code>limit(3)</code> stops after three, so this returns quickly even without an index: MongoDB stops scanning as soon as it has found three.',see:'Three documents, each with an ObjectId <code>_id</code>.',vm:'well under a second',focus:['zMongo']}),
+   C({term:'T2',label:'Read the plan',code:'db.events.find({ host: "host042", event_date: "2026-08-05" })\n  .explain("executionStats").executionStats',run:async()=>{ await wait(900); const ms=rnd(1050,1450); S.mongo.before={ex:N,ret:HIT,ms}; out('T2',`{\n  executionSuccess: true,\n  nReturned: ${HIT},\n  executionTimeMillis: ${ms},\n  totalKeysExamined: 0,\n  totalDocsExamined: ${N},\n  executionStages: {\n    isCached: false,\n    stage: 'COLLSCAN',\n    filter: {\n      '$and': [\n        { event_date: { '$eq': '2026-08-05' } },\n        { host: { '$eq': 'host042' } }\n      ]\n    },\n    nReturned: ${HIT},\n    executionTimeMillisEstimate: ${ms-40},\n    works: ${N+1},\n    advanced: ${HIT},\n    needTime: ${N-HIT},\n    needYield: 0,\n    saveState: ${Math.round(N/1000)},\n    restoreState: ${Math.round(N/1000)},\n    isEOF: 1,\n    direction: 'forward',\n    docsExamined: ${N}\n  }\n}`); S.evidence.before=true; },
+     what:'Runs the full query (no limit) and reports how it ran. The four numbers to write down: <code>stage</code>, <code>totalDocsExamined</code>, <code>nReturned</code>, <code>executionTimeMillis</code>.',see:'COLLSCAN, 2,000,000 documents examined to return 471, about a second. 471 is close to the 500 you would expect from 2,000,000 events ÷ 200 hosts ÷ 20 days.',vm:'1 to 3 seconds',focus:['zMongo']})
+  ],take:['COLLSCAN means MongoDB read every document. totalDocsExamined ÷ nReturned (here about 4,250) is how much work was wasted.','Always read <code>explain()</code> before trusting a query\'s speed.']},
+ {title:'Create a compound index and measure again',short:'IXSCAN',intro:'Index the two filter fields, in that order, and compare.',
+  cmds:[
+   C({term:'T2',label:'Create the index',code:'db.events.createIndex({ host: 1, event_date: 1 })',run:async()=>{ await wait(1500); S.mongo.indexes.push('host_1_event_date_1'); S.mongo.newIdx=true; setTimeout(()=>S.mongo.newIdx=false,4000); out('T2',"host_1_event_date_1"); },what:'Builds a B-tree of (host, event_date) pairs, sorted by host and then date, each pointing at its document. <code>1</code> means ascending. MongoDB names it from the fields.',see:'A new index chip appears next to the default <code>_id_</code> index.',vm:'5 to 15 seconds for 2 million documents',focus:['zMongo']}),
+   C({term:'T2',label:'Explain again',code:'db.events.find({ host: "host042", event_date: "2026-08-05" })\n  .explain("executionStats").executionStats',run:async()=>{ await wait(400); const ms=rnd(2,6); S.mongo.after={ex:HIT,ret:HIT,ms}; out('T2',`{\n  executionSuccess: true,\n  nReturned: ${HIT},\n  executionTimeMillis: ${ms},\n  totalKeysExamined: ${HIT},\n  totalDocsExamined: ${HIT},\n  executionStages: {\n    isCached: false,\n    stage: 'FETCH',\n    nReturned: ${HIT},\n    executionTimeMillisEstimate: ${ms-1},\n    works: ${HIT+1},\n    advanced: ${HIT},\n    docsExamined: ${HIT},\n    alreadyHasObj: 0,\n    inputStage: {\n      stage: 'IXSCAN',\n      nReturned: ${HIT},\n      keyPattern: { host: 1, event_date: 1 },\n      indexName: 'host_1_event_date_1',\n      isMultiKey: false,\n      direction: 'forward',\n      indexBounds: {\n        host: [ '[\"host042\", \"host042\"]' ],\n        event_date: [ '[\"2026-08-05\", \"2026-08-05\"]' ]\n      },\n      keysExamined: ${HIT},\n      seeks: 1\n    }\n  }\n}`); S.evidence.after=true; },
+     what:'Same query, same explain. Look for <code>IXSCAN</code>: it appears as the <code>inputStage</code> of a <code>FETCH</code>. The index finds the 471 entries; FETCH then loads those 471 documents.',see:'totalKeysExamined 471, totalDocsExamined 471, a few milliseconds. The bar shrinks from the full width to a sliver.',vm:'milliseconds',focus:['zMongo'],
+     fix:'The top-level stage now says <code>FETCH</code>, not <code>IXSCAN</code>. Students searching the output for "stage: IXSCAN" at the top will not find it; it is one level down, in <code>inputStage</code>.'}),
+   C({term:'T2',label:'Aggregate one day by action',code:'db.events.aggregate([\n  { $match: { event_date: "2026-08-05" } },\n  { $group: { _id: "$action", n: { $sum: 1 }, bytes: { $sum: "$bytes" } } },\n  { $sort: { n: -1 } }\n])',run:async()=>{ await wait(1300); S.mongo.lastAgg=true; out('T2','[\n'+DAY.map(d=>`  { _id: '${d[0]}', n: ${d[1]}, bytes: Long('${d[2]}') }`).join(',\n')+'\n]'); },
+     what:'A pipeline: keep one day, group by action counting events and summing bytes, sort by count. <code>Long(…)</code> appears because the byte totals are too big for a 32-bit integer.',see:'Five rows of about 20,000 events each. It took about a second, like the COLLSCAN, and the panel explains why.',vm:'about 1 second',focus:['zMongo'],
+     fix:'The sheet says "now that the index exists", but this <code>$match</code> filters on <code>event_date</code> alone. The index starts with <code>host</code>, so it cannot serve this filter, exactly as step 6\'s own note says. This aggregation still does a COLLSCAN; check with <code>db.events.explain().aggregate([...])</code>. It needs an index whose first field is <code>event_date</code>.'})
+  ],take:['A compound index made the same query examine 471 documents instead of 2,000,000: about 4,250 times less work.','Field order matters: <code>{host, event_date}</code> serves filters on host, or host and date, but not date alone.','IXSCAN usually sits under a FETCH stage, which loads the documents the index pointed to.']},
+ {title:'Read and write MongoDB from Spark',short:'Spark + Mongo',intro:'The Spark connector turns a collection into a DataFrame, and pushes filters down to MongoDB.',
+  cmds:[
+   C({term:'T2',label:'Leave mongosh',code:'exit',run:()=>{ S.terms.T2.mode='shell'; },what:'Back to the Linux shell in T2.',see:'The prompt returns to hadoop@ubuntuOS.',vm:'instant',focus:['zMongo']}),
+   C({term:'T2',label:'Start PySpark with the Mongo connector',code:'pyspark --packages org.mongodb.spark:mongo-spark-connector_2.12:10.3.0',run:()=>{ sparkBanner('T2',true); S.terms.T2.mode='py'; S.spark.T2=true; addProc('sp2','SparkSubmit (pyspark)','jvm','T2','UI :4040'); addFs(HOME+'/.ivy2/jars/org.mongodb.spark_mongo-spark-connector_2.12-10.3.0.jar','file'); addFs(HOME+'/.ivy2/jars/org.mongodb_mongodb-driver-sync-4.8.2.jar','file'); },
+     what:'Downloads the MongoDB Spark connector 10.3 (built for Scala 2.12, like Spark 3.5) and the MongoDB Java driver into ~/.ivy2, then starts PySpark.',see:'A SparkSubmit process; the jars in ~/.ivy2/jars.',vm:'20 to 60 seconds the first time (downloads)',focus:['zMachine','zSpark']}),
+   C({term:'T2',label:'Read the collection',code:'df = (spark.read.format("mongodb")\n      .option("connection.uri", "mongodb://localhost:27017")\n      .option("database", "bda").option("collection", "events").load())',run:async()=>{ await wait(600); },what:'Connects through the port Docker forwarded. Spark samples some documents to infer a schema; the data itself is read only when an action runs.',see:'No output.',vm:'a few seconds (schema sampling)',focus:['zSpark']}),
+   C({term:'T2',label:'Print the inferred schema',code:'df.printSchema()',run:()=>out('T2','root\n |-- _id: string (nullable = true)\n |-- action: string (nullable = true)\n |-- bytes: integer (nullable = true)\n |-- event_date: string (nullable = true)\n |-- event_id: integer (nullable = true)\n |-- event_time: string (nullable = true)\n |-- host: string (nullable = true)\n |-- src_ip: string (nullable = true)\n'),what:'The connector built this from sampled documents. <code>_id</code> becomes a string, and fields are listed alphabetically.',see:'Eight columns, including the <code>_id</code> that mongoimport added.',vm:'instant',focus:['zSpark']}),
+   C({term:'T2',label:'Count host042 by action',code:"df.filter(\"host = 'host042'\").groupBy(\"action\").count().show()",run:async()=>{ await wait(1500); S.spark.pushdown=true; out('T2',fmtTable(['action','count'],Object.entries(A42).map(([a,c])=>({action:a,count:c})))); },what:'A normal DataFrame query. The filter is sent to MongoDB as a <code>$match</code>, so only host042\'s documents (about 10,000) travel to Spark, which then groups them.',see:'Five actions, about 2,000 each. The Spark panel shows the pushdown.',vm:'a few seconds',focus:['zSpark']}),
+   C({term:'T2',label:'Show the plan',code:"df.filter(\"host = 'host042'\").explain(True)",run:()=>out('T2',"== Parsed Logical Plan ==\n'Filter ('host = host042)\n+- RelationV2[_id#0, action#1, bytes#2, event_date#3, event_id#4, event_time#5, host#6, src_ip#7] bda.events\n\n== Analyzed Logical Plan ==\n_id: string, action: string, bytes: int, event_date: string, event_id: int, event_time: string, host: string, src_ip: string\nFilter (host#6 = host042)\n+- RelationV2[_id#0, action#1, bytes#2, event_date#3, event_id#4, event_time#5, host#6, src_ip#7] bda.events\n\n== Optimized Logical Plan ==\nFilter (isnotnull(host#6) AND (host#6 = host042))\n+- RelationV2[_id#0, action#1, bytes#2, event_date#3, event_id#4, event_time#5, host#6, src_ip#7] bda.events\n\n== Physical Plan ==\n*(1) Filter (isnotnull(host#6) AND (host#6 = host042))\n+- *(1) ColumnarToRow\n   +- BatchScan bda.events[_id#0, action#1, bytes#2, event_date#3, event_id#4, event_time#5, host#6, src_ip#7] MongoScan{namespaceDescription=bda.events, pipeline=[{\"$match\": {\"$and\": [{\"host\": {\"$exists\": true, \"$ne\": null}}, {\"host\": \"host042\"}]}}]} RuntimeFilters: []\n"),
+     what:'<code>explain(True)</code> prints all four plan stages. Read the physical plan from the bottom up.',see:'Inside <code>MongoScan</code> the <code>pipeline</code> contains the <code>$match</code> on host: that is the pushdown. Spark keeps its own Filter on top as a safety check; it costs nothing because the rows already match.',vm:'instant',focus:['zSpark']})
+  ],take:['The connector makes a MongoDB collection a DataFrame.','Pushdown sends the filter to the database, so only matching documents leave it. Check for it in the physical plan, inside the scan.']},
+ {title:'Start HBase and create a table',short:'HBase table',intro:'Install HBase in standalone mode and create a table with two column families.',
+  cmds:[
+   C({term:'T1',label:'Download HBase',code:'cd /tmp\nwget https://archive.apache.org/dist/hbase/2.5.8/hbase-2.5.8-bin.tar.gz',run:async()=>{ S.terms.T1.cwd='/tmp'; out('T1','--2026-09-28 10:31:04--  https://archive.apache.org/dist/hbase/2.5.8/hbase-2.5.8-bin.tar.gz\nResolving archive.apache.org (archive.apache.org)... 65.108.204.189\nConnecting to archive.apache.org (archive.apache.org)|65.108.204.189|:443... connected.\nHTTP request sent, awaiting response... 200 OK\nLength: 296 MB [application/x-gzip]\nSaving to: ‘hbase-2.5.8-bin.tar.gz’\n'); S.terms.T1.mode='busy'; for(let i=1;i<=5;i++){ await wait(350); out('T1',`hbase-2.5.8-bin.tar.gz   ${String(i*20).padStart(3)}%[${'='.repeat(i*4).padEnd(20)}]`); } S.terms.T1.mode='shell'; addFs('/tmp/hbase-2.5.8-bin.tar.gz','file','296 M'); out('T1','\n2026-09-28 10:32:11 - ‘hbase-2.5.8-bin.tar.gz’ saved'); },
+     what:'Downloads HBase 2.5.8 from the Apache archive into /tmp.',see:'The archive appears in /tmp.',vm:'about a minute, depending on the connection',focus:['zMachine']}),
+   C({term:'T1',label:'Unpack into /opt/hbase',code:'sudo tar -xzf hbase-2.5.8-bin.tar.gz -C /opt && sudo mv /opt/hbase-2.5.8 /opt/hbase\nsudo chown -R $USER:$USER /opt/hbase',run:async()=>{ await wait(800); ['/opt/hbase','/opt/hbase/bin','/opt/hbase/conf','/opt/hbase/lib'].forEach(p=>addFs(p,'dir')); addFs('/opt/hbase/conf/hbase-site.xml','file'); S.hbase.installed=true; },what:'Same pattern as Flume and Kafka: unpack under /opt, give it a version-free name, and make your user the owner so HBase can write its logs.',see:'/opt/hbase with bin, conf and lib.',vm:'about 10 seconds',focus:['zMachine']}),
+   C({term:'T1',label:'Put it on the PATH',code:"echo 'export HBASE_HOME=/opt/hbase' >> ~/.bashrc\necho 'export PATH=$PATH:$HBASE_HOME/bin' >> ~/.bashrc\nsource ~/.bashrc",run:()=>{},what:'Adds two lines to ~/.bashrc so <code>start-hbase.sh</code> and <code>hbase</code> work from anywhere, and reloads it in this terminal.',see:'Nothing printed. (Other open terminals need <code>source ~/.bashrc</code> too.)',vm:'instant',focus:['zMachine']}),
+   C({term:'T1',label:'Start HBase',code:'start-hbase.sh',run:async()=>{ out('T1','running master, logging to /opt/hbase/logs/hbase-hadoop-master-ubuntuOS.out'); await wait(800); addProc('hm','HMaster (standalone)','jvm','T1','master + region server + ZooKeeper, UI :16010'); addFs('/opt/hbase/logs','dir'); addFs('/opt/hbase/logs/hbase-hadoop-master-ubuntuOS.log','file'); addFs('/tmp/hbase-hadoop/hbase','dir'); addFs('/tmp/hbase-hadoop/zookeeper','dir'); S.hbase.up=true; },
+     what:'In standalone mode one Java process, HMaster, runs the master, a region server and its own ZooKeeper, and stores data on the local disk (by default under <code>/tmp/hbase-hadoop</code>), not in HDFS. Your <code>JAVA_HOME</code> from earlier labs must be set.',see:'One new Java process, HMaster, and HBase\'s data folder in /tmp.',vm:'10 to 20 seconds',focus:['zMachine','zHbase']}),
+   C({term:'T1',label:'Wait for it',code:'sleep 15',run:async()=>{ S.terms.T1.mode='busy'; await wait(1500); S.terms.T1.mode='shell'; },what:'The master needs time to start its region server and ZooKeeper before the shell can connect.',see:'Nothing printed.',vm:'15 seconds',focus:['zHbase']}),
+   C({term:'T1',label:'Create the table',code:"hbase shell <<'EOF'\ncreate 'events', {NAME => 'meta', VERSIONS => 1}, {NAME => 'net', VERSIONS => 1}\nlist\ndescribe 'events'\nEOF",run:async()=>{ await wait(1200); hbaseBanner('T1'); hbLine=0; hb('T1',"create 'events', {NAME => 'meta', VERSIONS => 1}, {NAME => 'net', VERSIONS => 1}",'Created table events\n'+took()+'\n=> Hbase::Table - events'); S.hbase.eventsCreated=true; addFs('/tmp/hbase-hadoop/hbase/data/default/events','dir'); hb('T1','list','TABLE\nevents\n1 row(s)\n'+took()+'\n=> ["events"]');
+       const fam=n=>`{NAME => '${n}', INDEX_BLOCK_ENCODING => 'NONE', VERSIONS => '1', KEEP_DELETED_CELLS => 'FALSE', DATA_BLOCK_ENCODING => 'NONE', TTL => 'FOREVER', MIN_VERSIONS => '0', REPLICATION_SCOPE => '0', BLOOMFILTER => 'ROW', IN_MEMORY => 'false', COMPRESSION => 'NONE', BLOCKCACHE => 'true', BLOCKSIZE => '65536 B (64KB)'}`;
+       hb('T1',"describe 'events'",`Table events is ENABLED\nevents, {TABLE_ATTRIBUTES => {METADATA => {'hbase.store.file-tracker.impl' => 'DEFAULT'}}}\nCOLUMN FAMILIES DESCRIPTION\n${fam('meta')}\n\n${fam('net')}\n\n2 row(s)\nQuantity of column families: 2\n${took()}`); hb('T1',''); },
+     what:'Feeds three shell commands through a here document. A table is declared with its <strong>column families</strong> only (<code>meta</code> and <code>net</code>); columns inside a family (qualifiers) are created freely on each put. <code>VERSIONS =&gt; 1</code> keeps only the latest value per cell. Each family is stored in separate files, which is why you keep families few.',see:'The events table appears in the HBase panel, empty, and a folder for it in /tmp/hbase-hadoop.',vm:'about 10 seconds (most of it starting the shell)',focus:['zHbase']})
+  ],take:['Standalone HBase is one JVM (HMaster) using the local disk; production HBase runs region servers on top of HDFS.','You define column families up front; columns are added per row, freely.']},
+ {title:'Design the row key and write rows',short:'row keys',intro:'Insert rows with the salted, reversed-timestamp key and observe the sort order.',
+  cmds:[
+   C({term:'T1',label:'Put, scan, get, range scan',code:"hbase shell <<'EOF'\n# key = salt|host|reversed_timestamp\nput 'events', '03|host042|9223370554764775807', 'meta:action', 'login_failed'\nput 'events', '03|host042|9223370554764775807', 'net:src_ip', '10.0.4.9'\nput 'events', '03|host042|9223370554764775900', 'meta:action', 'login_ok'\nput 'events', '07|host108|9223370554764775810', 'meta:action', 'port_scan'\nscan 'events'\nget 'events', '03|host042|9223370554764775807'\nscan 'events', {STARTROW => '03|host042', ENDROW => '03|host043'}\nEOF",
+     run:async()=>{ await wait(1000); hbaseBanner('T1'); hbLine=0; hb('T1','# key = salt|host|reversed_timestamp');
+       const puts=[['03|host042|9223370554764775807','meta:action','login_failed'],['03|host042|9223370554764775807','net:src_ip','10.0.4.9'],['03|host042|9223370554764775900','meta:action','login_ok'],['07|host108|9223370554764775810','meta:action','port_scan']];
+       for(const [k,c,v] of puts){ hb('T1',`put 'events', '${k}', '${c}', '${v}'`,took()); const row=S.hbase.events.get(k)||{}; row[c]={v,t:hbTime()}; S.hbase.events.set(k,row); fly($('#termBody'),$('#zHbase'),'var(--hbase)',1); renderAll(); await wait(350); }
+       const full=scanText(S.hbase.events); hb('T1',"scan 'events'",full.text+'\n'+took());
+       const r=S.hbase.events.get('03|host042|9223370554764775807'); hb('T1',"get 'events', '03|host042|9223370554764775807'",'COLUMN                     CELL\n'+Object.keys(r).sort().map(c=>` ${c.padEnd(26)} timestamp=${r[c].t}, value=${r[c].v}`).join('\n')+'\n1 row(s)\n'+took());
+       const rs=scanText(S.hbase.events,'03|host042','03|host043'); S.hbase.lastRange=['03|host042','03|host043']; hb('T1',"scan 'events', {STARTROW => '03|host042', ENDROW => '03|host043'}",rs.text+'\n'+took()); hb('T1',''); },
+     what:'Lines starting with <code>#</code> are comments. Each <code>put</code> writes one cell: row key, <code>family:qualifier</code>, value. Two puts with the same row key fill two cells of one row. <code>scan</code> walks rows in key order, <code>get</code> fetches one row by its key, and the bounded scan reads a key range: <code>STARTROW</code> included, <code>ENDROW</code> excluded.',see:'Rows are sorted by key: both host042 rows sit together, the one ending …775807 (the newer event, smaller reversed time) first, then host108. The range scan returns only host042\'s two rows, highlighted.',vm:'about 10 seconds (shell start), each command milliseconds',focus:['zHbase']})
+  ],take:['HBase keeps rows sorted by key, byte by byte. That sort order is the only index you get.','The host after the salt makes one host\'s history a single contiguous range; the reversed timestamp puts the newest first.','A range scan with STARTROW and ENDROW is HBase\'s second strength, after the single-row get.']},
+ {title:'Demonstrate the hotspot with a sequential key',short:'hotspot',intro:'Write rows keyed by an increasing number into a pre-split table and see where they land.',
+  cmds:[
+   C({term:'T1',label:'Create a split table and write sequential keys',code:"hbase shell <<'EOF'\ncreate 'events_seq', 'meta', {SPLITS => ['2','4','6','8']}\nput 'events_seq', '9990000001', 'meta:action', 'a'\nput 'events_seq', '9990000002', 'meta:action', 'b'\nput 'events_seq', '9990000003', 'meta:action', 'c'\nscan 'events_seq'\nEOF",
+     run:async()=>{ await wait(1000); hbaseBanner('T1'); hbLine=0; hb('T1',"create 'events_seq', 'meta', {SPLITS => ['2','4','6','8']}",'Created table events_seq\n'+took()+'\n=> Hbase::Table - events_seq'); S.hbase.seqCreated=true; addFs('/tmp/hbase-hadoop/hbase/data/default/events_seq','dir'); renderAll(); await wait(500);
+       for(const [k,v] of [['9990000001','a'],['9990000002','b'],['9990000003','c']]){ hb('T1',`put 'events_seq', '${k}', 'meta:action', '${v}'`,took()); S.hbase.seq.set(k,{'meta:action':{v,t:hbTime()}}); S.hbase.seqWrites[4]++; fly($('#termBody'),$('#reg4'),'var(--danger)',1); renderAll(); await wait(450); }
+       S.hbase.lastSeqBatch='All three keys start with "9", so all land in region 5 (keys from "8" to the end). Regions 1 to 4 receive nothing.';
+       hb('T1',"scan 'events_seq'",scanText(S.hbase.seq).text+'\n'+took()); hb('T1',''); },
+     what:'<code>SPLITS</code> pre-splits the table into 5 regions at the keys 2, 4, 6 and 8. Each region owns a key range and, on a real cluster, could sit on a different server. Keys are compared as text, character by character.',see:'Three writes, all into region 5, shown in red as the hotspot.',vm:'about 10 seconds',focus:['zHbase']}),
+   C({term:'T1',label:'Look at the HBase UI',code:'# open http://localhost:16010  >  Tables  >  events_seq',run:()=>{},what:'The master\'s web UI lists each region of the table with its start and end key and request counts. On your VM all regions live in one process, so you see the imbalance in the counts, not in CPU load.',see:'The region panel mirrors what the UI shows: 3 write requests on the last region, 0 on the others.',vm:'n/a',focus:['zHbase']}),
+   C({term:'T1',label:'More sequential writes',extra:true,code:"hbase shell <<'EOF'\n(4..23).each { |i| put 'events_seq', (9990000000 + i).to_s, 'meta:action', 'x' }\nEOF",
+     run:async()=>{ await wait(800); hbaseBanner('T1'); hbLine=0; hb('T1',"(4..23).each { |i| put 'events_seq', (9990000000 + i).to_s, 'meta:action', 'x' }"); for(let i=4;i<=23;i++){ S.hbase.seq.set(String(9990000000+i),{'meta:action':{v:'x',t:hbTime()}}); S.hbase.seqWrites[4]++; if(i%4===0){ fly($('#termBody'),$('#reg4'),'var(--danger)',2); renderAll(); await wait(200); } } out('T1','=> 4..23\n'+took()); hb('T1',''); S.hbase.lastSeqBatch='20 more increasing keys: every one still lands in region 5. A timestamp or auto-increment ID behaves the same way: each new key sorts after the last one.'; },
+     what:'Not on the lab sheet. The HBase shell is a Ruby (JRuby) shell, so a loop can write many rows. This writes 20 more increasing keys.',see:'Region 5\'s bar grows to 23; the other four stay at 0.',vm:'a few seconds',focus:['zHbase']}),
+   C({term:'T1',label:'Now with a salt prefix',extra:true,code:"hbase shell <<'EOF'\n(1..20).each { |i| put 'events_seq', \"#{i % 10}|#{9990000100 + i}\", 'meta:action', 'y' }\nEOF",
+     run:async()=>{ await wait(800); hbaseBanner('T1'); hbLine=0; hb('T1',"(1..20).each { |i| put 'events_seq', \"#{i % 10}|#{9990000100 + i}\", 'meta:action', 'y' }"); const before=S.hbase.seqWrites.slice(); for(let i=1;i<=20;i++){ const k=`${i%10}|${9990000100+i}`; S.hbase.seq.set(k,{'meta:action':{v:'y',t:hbTime()}}); const reg=Math.min(4,Math.floor((i%10)/2)); S.hbase.seqWrites[reg]++; fly($('#termBody'),$('#reg'+reg),'var(--hbase)',1); if(i%5===0){ renderAll(); await wait(220); } } out('T1','=> 1..20\n'+took()); hb('T1',''); const add=S.hbase.seqWrites.map((v,i)=>v-before[i]); S.hbase.lastSeqBatch=`The same 20 keys with a one-digit salt in front (0 to 9) spread out: ${add.join(', ')} new writes across regions 1 to 5. That is the fix used in the events table's key.`; },
+     what:'Not on the lab sheet. Each key gets a salt <code>i % 10</code> in front, so keys start with 0 to 9 and fall into all five ranges.',see:'Four new writes per region: the load is now even.',vm:'a few seconds',focus:['zHbase']})
+  ],take:['A sequential key sends every new write to the last region: one server busy, the rest idle. At 50,000 writes a second that one region server is the limit of the whole cluster, and when the region splits, the new last region takes over the same problem.','A salt prefix spreads writes across regions; the cost is that a reader must know the salt (so derive it from the host) or scan every salt bucket.']},
+ {title:'Compare the three stores on one question',short:'comparison',intro:'Time "all events for host042 on 2026-08-05" against each store.',
+  cmds:[
+   C({term:'T3',label:'Start a second PySpark',code:'pyspark',run:()=>{ sparkBanner('T3',false); out('T3',"WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.",'warn'); S.terms.T3.mode='py'; S.spark.T3=true; addProc('sp3','SparkSubmit (pyspark)','jvm','T3','UI :4041'); },what:'A fresh PySpark session in T3. Port 4040 is still taken by the session in T2, so this one moves to 4041.',see:'A second SparkSubmit process.',vm:'10 to 20 seconds',focus:['zSpark','zMachine']}),
+   C({term:'T3',label:'Time the HDFS scan, as written on the sheet',code:"import time\nt=time.time(); n = spark.read.json(\"hdfs://localhost:9000/user/$USER/lab3/events.json\") \\\n  .filter(\"host='host042' AND event_date='2026-08-05'\").count(); print(n, time.time()-t)",
+     run:async()=>{ await wait(900); out('T3','Traceback (most recent call last):\n  File "<stdin>", line 1, in <module>\n  File "/opt/spark/python/pyspark/sql/readwriter.py", line 425, in json\n    return self._df(self._jreader.json(self._spark._sc._jvm.PythonUtils.toSeq(path)))\n  File "/opt/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/java_gateway.py", line 1322, in __call__\n  File "/opt/spark/python/pyspark/errors/exceptions/captured.py", line 185, in deco\n    raise converted from None\npyspark.errors.exceptions.captured.AnalysisException: [PATH_NOT_FOUND] Path does not exist: hdfs://localhost:9000/user/$USER/lab3/events.json.','err'); },
+     what:'This is the command exactly as the lab sheet has it, and it fails.',see:'PATH_NOT_FOUND, and the path still contains the literal text <code>$USER</code>.',vm:'a few seconds',focus:['zSpark'],
+     fix:'<code>$USER</code> is expanded by the Linux shell, but this line runs inside Python, which passes the string through unchanged, so Spark looks for a folder literally named <code>$USER</code>. Use the real path (<code>/user/hadoop/…</code>) or build it with <code>os.environ["USER"]</code>, as in the next command.'}),
+   C({term:'T3',label:'Time the HDFS scan, fixed',extra:true,code:"import os\npath = f\"hdfs://localhost:9000/user/{os.environ['USER']}/lab3/events.json\"\nt=time.time(); n = spark.read.json(path) \\\n  .filter(\"host='host042' AND event_date='2026-08-05'\").count(); print(n, time.time()-t)",
+     run:async()=>{ S.terms.T3.mode='busy'; await progress(3500,10,()=>{}); for(let i=0;i<3;i++) fly($('#zHdfs'),$('#zSpark'),'var(--hdfs)',3); const secs=+(26+Math.random()*7).toFixed(2); S.terms.T3.mode='py'; out('T3',`${HIT} ${secs}${String(Math.random()).slice(2,12)}`); S.timing.hdfs=secs; checkTimings(); },
+     what:'Same query with the path built correctly. <code>spark.read.json</code> with no schema reads the whole file once to infer the columns; the filter and count then read all three blocks again. Nothing lets Spark skip data: a JSON file in HDFS has no index.',see:'471, after roughly half a minute. Passing a schema (as in the streaming lab) would remove the inference pass and roughly halve the time.',vm:'20 to 60 seconds',focus:['zSpark','zHdfs']}),
+   C({term:'T1',label:'Time MongoDB',code:"docker exec mongo mongosh bda --quiet --eval \\\n  'const t=Date.now(); const n=db.events.countDocuments({host:\"host042\",event_date:\"2026-08-05\"}); print(n, Date.now()-t+\"ms\")'",
+     run:async()=>{ await wait(700); const ms=rnd(3,8); out('T1',`${HIT} ${ms}ms`); S.timing.mongo=ms/1000; checkTimings(); },what:'Counts the matching documents and measures the time inside the shell, so container start-up is not included. The count is answered from the index.',see:`471 in a few milliseconds.`,vm:'1 second wall time, a few ms measured',focus:['zMongo','zSpark']}),
+   C({term:'T1',label:'Time HBase',code:"echo \"scan 'events', {STARTROW => '03|host042', ENDROW => '03|host043'}\" | hbase shell",
+     run:async()=>{ S.terms.T1.mode='busy'; await wait(1500); S.terms.T1.mode='shell'; hbaseBanner('T1'); hbLine=0; const rs=scanText(S.hbase.events,'03|host042','03|host043'); const t=+(0.009+Math.random()*0.012).toFixed(4); hb('T1',"scan 'events', {STARTROW => '03|host042', ENDROW => '03|host043'}",rs.text+`\nTook ${t} seconds`); hb('T1',''); S.timing.hbase=t; S.timing.hbaseWall=rnd(6,10); S.hbase.lastRange=['03|host042','03|host043']; checkTimings(); },
+     what:'Pipes one command into the HBase shell. The <code>Took</code> line is the scan alone.',see:'2 rows in about 10 to 20 ms; the whole command took several seconds because the shell is a JVM that has to start.',vm:'5 to 10 seconds wall time',focus:['zHbase','zSpark'],
+     fix:'This scans only the two rows you inserted by hand in step 9, not the two million events, so it is not a like-for-like comparison. Say so in the report. A fair test would load the dataset into HBase first (for example from Spark), then time the same range scan. The range scan cost would still depend on the rows in the range, not on the table\'s size.'})
+  ],take:['HDFS answered by scanning everything (tens of seconds), MongoDB by an index (milliseconds), HBase by a key range (milliseconds). Each number follows from the storage design.','Report what each timing includes: Spark job time, time measured inside mongosh, or only the HBase scan.']},
+ {title:'Shut everything down',short:'shutdown',intro:'Stop services in reverse order. Leave the HDFS data in place for lab 3.2.',
+  cmds:[
+   C({term:'T3',label:'Leave the step 11 PySpark',extra:true,code:'exit()',run:()=>{ S.terms.T3.mode='shell'; S.spark.T3=false; rmProc('sp3'); },what:'Not on the lab sheet, but this session is a Java process that would otherwise still show in <code>jps</code>.',see:'One SparkSubmit gone.',vm:'instant',focus:['zMachine']}),
+   C({term:'T2',label:'Leave the step 7 PySpark',extra:true,code:'exit()',run:()=>{ S.terms.T2.mode='shell'; S.spark.T2=false; rmProc('sp2'); },what:'The same for the session started in step 7.',see:'The second SparkSubmit gone.',vm:'instant',focus:['zMachine']}),
+   C({term:'T1',label:'Stop HBase',code:'stop-hbase.sh',run:async()=>{ out('T1','stopping hbase',''); for(let i=0;i<4;i++){ await wait(300); S.terms.T1.lines[S.terms.T1.lines.length-1]+='...'; termDirty=true; } rmProc('hm'); S.hbase.up=false; },what:'Asks the master to shut down cleanly, which flushes in-memory writes (the MemStore) and closes the write-ahead log. Killing it instead could leave edits to replay on next start.',see:'HMaster disappears. The data in /tmp/hbase-hadoop stays.',vm:'10 to 30 seconds',focus:['zHbase','zMachine']}),
+   C({term:'T1',label:'Stop MongoDB',code:'docker stop mongo',run:async()=>{ await wait(600); out('T1','mongo'); rmProc('mongo'); S.mongo.up=false; },what:'Stops the container. It still exists, with its data, so <code>docker start mongo</code> brings it back.',see:'The container disappears from the running list.',vm:'a few seconds',focus:['zMongo','zMachine']}),
+   C({term:'T1',label:'Stop HDFS',code:'stop-dfs.sh',run:async()=>{ out('T1','Stopping namenodes on [localhost]'); await wait(400); out('T1','Stopping datanodes'); await wait(300); out('T1','Stopping secondary namenodes [ubuntuOS]'); ['nn','dn','snn'].forEach(rmProc); S.hdfs.up=false; },what:'Stops the three HDFS daemons. events.json stays in HDFS for lab 3.2.',see:'The three HDFS processes disappear; the blocks remain on disk.',vm:'about 10 seconds',focus:['zHdfs','zMachine']}),
+   C({term:'T1',label:'Java processes left',code:'jps',run:()=>{ const j=S.procs.filter(p=>p.kind==='jvm').map(p=>`${p.pid} ${p.name.split(' ')[0]}`); j.push(`${newPid()} Jps`); out('T1',j.join('\n')); },what:'Lists running Java processes. MongoDB is not Java (and runs in Docker), so it never appears here.',see:'Only Jps.',vm:'1 second',focus:['zMachine']}),
+   C({term:'T1',label:'Containers left',code:'docker ps',run:()=>out('T1','CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES'),what:'Lists running containers. <code>docker ps -a</code> would also show the stopped <code>mongo</code> container.',see:'Just the header: nothing running.',vm:'instant',focus:['zMachine']})
+  ],take:['Stop in reverse order of dependency, and stop HBase cleanly so its write-ahead log is flushed.','<code>jps</code> sees Java processes only; <code>docker ps</code> sees containers. You need both to check everything is down.']}
+];
+function checkTimings(){ if(S.timing.hdfs&&S.timing.mongo&&S.timing.hbase) S.evidence.timings=true; }
+
+/* ================= step UI ================= */
+let cur=0, keepScroll=null;
+const done=STEPS.map(s=>s.cmds.map(()=>false));
+function stepDone(i){ return done[i].every(Boolean); }
+function nextCmd(){ for(let i=0;i<STEPS.length;i++) for(let j=0;j<STEPS[i].cmds.length;j++) if(!done[i][j]) return [i,j]; return null; }
+function renderRail(){ $('#rail').innerHTML=STEPS.map((s,i)=>`<button role="tab" aria-selected="${i===cur}" class="${i===cur?'cur':''} ${stepDone(i)?'done':''}" data-i="${i}"><b>${i+1}</b>${s.short}</button>`).join(''); }
+$('#rail').addEventListener('click',e=>{ const b=e.target.closest('button[data-i]'); if(!b) return; cur=+b.dataset.i; renderStep(); renderRail(); });
+function renderStep(){
+  const s=STEPS[cur], nx=nextCmd();
+  let h=`<div class="step-head"><h2>Step ${cur+1}. ${s.title}</h2><p class="mb-2">${s.intro}</p></div>`;
+  if(nx && nx[0]<cur) h+=`<div class="ff-box"><p class="mb-2">Earlier steps have not been run yet, so this one cannot start. Run them yourself, or let the simulator run them quickly.</p><button class="btn btn-ink btn-sm" id="ffBtn">Run steps ${nx[0]+1} to ${cur} for me</button></div>`;
+  h+='<div class="cmd-list" id="cmdList">';
+  s.cmds.forEach((c,j)=>{
+    const isNext=nx&&nx[0]===cur&&nx[1]===j, isDone=done[cur][j];
+    h+=`<div class="cmd ${isDone?'done':''} ${isNext?'next':''}" id="cmd${j}"><div class="cmd-top"><span class="term-badge ${c.term}">${c.term}</span>${c.extra?'<span class="extra">extra, not on the sheet</span>':''}<span class="cmd-label">${c.label}</span><span class="status">${isDone?'done':''}</span><button class="btn btn-sm ${isNext?'btn-ink':'btn-line'} run" data-j="${j}" ${isNext&&!S.busy?'':'disabled'}>${isDone?'Ran':c.code.startsWith('# open')?'Open':'Run'}</button></div><pre>${esc(c.code)}</pre>
+      ${isDone?`<div class="cmd-explain"><p>${c.what}</p><p class="see">What changed: ${c.see}</p>${c.fix?`<p class="fix mb-2"><strong>Note on the lab sheet:</strong> ${c.fix}</p>`:''}<p class="vm mb-0">On the VM this takes ${c.vm}.</p></div>`:''}</div>`;
+  });
+  if(nx && nx[0]===cur && s.cmds.length-nx[1]>1) h+=`<button class="btn btn-line btn-sm mb-2" id="runRest" ${S.busy?'disabled':''}>Run the rest of this step</button>`;
+  if(stepDone(cur)) h+=`<div class="step-takeaway"><div class="panel-title mb-1">What this step taught</div><ul>${s.take.map(t=>`<li>${t}</li>`).join('')}</ul>${cur<STEPS.length-1?`<button class="btn btn-ink btn-sm mt-2" id="nextStep">Go to step ${cur+2}</button>`:`<a class="btn btn-ink btn-sm mt-2" href="#conclusion">Read what the lab teaches</a>`}</div>`;
+  h+='</div>';
+  $('#stepPane').innerHTML=h;
+  const list=$('#cmdList'), tgt=list&&(list.querySelector('.cmd.next')||list.querySelector('.step-takeaway'));
+  if(list&&tgt) list.scrollTop=Math.max(0,tgt.offsetTop-list.offsetTop-8);
+}
+$('#stepPane').addEventListener('click',async e=>{
+  const r=e.target.closest('button.run'); if(r&&!r.disabled){ await runCmd(cur,+r.dataset.j,false); return; }
+  if(e.target.id==='nextStep'){ cur++; renderStep(); renderRail(); $('#sim').scrollIntoView(); return; }
+  if(e.target.id==='runRest'){ const nx=nextCmd(); for(let j=nx[1];j<STEPS[cur].cmds.length;j++) await runCmd(cur,j,false); return; }
+  if(e.target.id==='ffBtn') await fastForward(cur);
+});
+function focusZones(z){ ['zMachine','zHdfs','zMongo','zHbase','zSpark'].forEach(id=>$('#'+id).classList.toggle('focus',z.includes(id)));
+  const sys=$('#sys'); if(getComputedStyle(sys).position!=='sticky'||!z.length) return;
+  const pick=z.filter(id=>id!=='zMachine'); const el=$('#'+(pick[0]||z[0]));
+  sys.scrollTo({top:Math.max(0,el.offsetTop-52),behavior:reduceMotion?'auto':'smooth'}); }
+async function runCmd(i,j,fast){
+  if(S.busy) return; const c=STEPS[i].cmds[j]; S.busy=true;
+  showTerm(c.term); if(!c.code.startsWith('# open')) echo(c.term,c.code); focusZones(c.focus||[]);
+  if(!fast) renderStep();
+  try{ await c.run(fast); } catch(err){ console.error(err); out(c.term,'(simulator error: '+err.message+')','err'); }
+  done[i][j]=true; S.busy=false;
+  if(!fast){ renderStep(); renderRail(); renderAll(); }
+}
+async function fastForward(upTo){
+  fastMode=true; const btn=$('#ffBtn'); if(btn){ btn.disabled=true; btn.textContent='Running…'; }
+  let nx; while((nx=nextCmd()) && nx[0]<upTo) await runCmd(nx[0],nx[1],true);
+  fastMode=false; renderStep(); renderRail(); renderAll();
+}
+window.__sim={S,STEPS,nextCmd,done};
+renderRail(); renderStep(); renderAll();
+S.evidenceWatch=setInterval(()=>{ if(S.hbase.lastRange&&S.hbase.seqCreated) S.evidence.rowkey=true; },500);
+})();
+</script>
+</body>
+</html>
